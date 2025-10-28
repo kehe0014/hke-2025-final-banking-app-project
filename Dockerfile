@@ -9,9 +9,14 @@ ENV DEBUG=False
 WORKDIR /app
 
 # Install system dependencies
+# Install system dependencies including curl and wget for debugging
 RUN apt-get update && apt-get install -y \
-    gcc \
-    && rm -rf /var/lib/apt/lists/*
+    curl \
+    wget \
+    net-tools \ 
+    iputils-ping \
+    && rm -rf /var/lib/apt/lists/* \
+    && apt-get clean
 
 # Install Python dependencies
 COPY requirements.txt .

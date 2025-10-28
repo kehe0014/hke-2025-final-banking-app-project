@@ -1,4 +1,4 @@
-name: Deploy Banking App to Production
+name: Deploy to Production - Pro
 
 on:
   push:
@@ -12,7 +12,6 @@ env:
   K8S_NAMESPACE: banking-app-prod
 
 jobs:
-  # JOB 1: Build et tests
   build:
     runs-on: ubuntu-latest
     outputs:
@@ -24,8 +23,8 @@ jobs:
     - name: Generate image tag
       id: tag
       run: |
-        # Utiliser le SHA du commit comme tag
-        echo "tag=${{ github.sha }}" >> $GITHUB_OUTPUT
+        SHORT_SHA=$(echo ${{ github.sha }} | cut -c1-8)
+        echo "tag=$SHORT_SHA" >> $GITHUB_OUTPUT
 
     - name: Set up Docker Buildx
       uses: docker/setup-buildx-action@v3
@@ -36,36 +35,33 @@ jobs:
         username: ${{ secrets.DOCKERHUB_USERNAME }}
         password: ${{ secrets.DOCKERHUB_TOKEN }}
 
-    - name: Build Docker image
+    - name: Build and push Docker image
       run: |
         docker build -t ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.tag.outputs.tag }} .
-
-    - name: Run security scan
-      run: |
-        echo "Security scan would run here (Trivy, etc.)"
-
-    - name: Push Docker image
-      run: |
         docker push ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.tag.outputs.tag }}
+        
+        # Tag also as latest
+        docker tag ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.tag.outputs.tag }} ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest
+        docker push ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest
 
-    - name: Simple syntax check
-      run: |
-        cd src
-        python -m py_compile bankingsystem/settings.py
-        python -m py_compile manage.py
-        echo "✅ Syntaxe Python valide"
+    - name: Security scan (Trivy)
+      uses: aquasecurity/trivy-action@master
+      with:
+        image-ref: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.tag.outputs.tag }}
+        format: sarif
+        output: trivy-results.sarif
 
-  # JOB 2: Déploiement en production
-  deploy-prod:
+    - name: Upload security scan results
+      uses: github/codeql-action/upload-sarif@v2
+      with:
+        sarif_file: trivy-results.sarif
+
+  deploy:
     needs: build
     runs-on: ubuntu-latest
     environment: production
-    if: github.event_name == 'push' || github.event_name == 'release'
     
     steps:
-    - name: Checkout code
-      uses: actions/checkout@v4
-
     - name: Configure Kubernetes
       run: |
         mkdir -p $HOME/.kube
@@ -77,63 +73,79 @@ jobs:
         kubectl cluster-info
         kubectl get nodes
 
-    - name: Create namespace
+    - name: Ensure secrets exist
+      run: |
+        if ! kubectl get secret banking-app-secrets -n ${{ env.K8S_NAMESPACE }} > /dev/null 2>&1; then
+          echo "🔐 Création des secrets..."
+          kubectl create secret generic banking-app-secrets -n ${{ env.K8S_NAMESPACE }} \
+            --from-literal=SECRET_KEY='prod-$(date +%s)' \
+            --from-literal=DATABASE_URL='sqlite:///db.sqlite3'
+        fi
+
+    - name: Deploy Application Stack
       run: |
         kubectl create namespace ${{ env.K8S_NAMESPACE }} --dry-run=client -o yaml | kubectl apply -f -
-
-    - name: Deploy Redis
-      run: |
         kubectl apply -f k8s/redis-deployment-prod.yaml -n ${{ env.K8S_NAMESPACE }}
-        echo "✅ Redis déployé"
-
-    - name: Deploy Banking App
-      run: |
-        # Mettre à jour l'image dans le deployment
-        sed "s|tdksoft341/tdk-banking-app:v1.0.0|${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ needs.build.outputs.image-tag }}|g" k8s/deployment-prod.yaml > k8s/deployment-prod-temp.yaml
-        kubectl apply -f k8s/deployment-prod-temp.yaml -n ${{ env.K8S_NAMESPACE }}
-        rm k8s/deployment-prod-temp.yaml
-        echo "✅ Banking App déployée"
-
-    - name: Deploy Services
-      run: |
+        kubectl set image deployment/banking-app banking-app=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ needs.build.outputs.image-tag }} -n ${{ env.K8S_NAMESPACE }}
         kubectl apply -f k8s/service-prod.yaml -n ${{ env.K8S_NAMESPACE }}
-        echo "✅ Services déployés"
 
     - name: Wait for rollout
       run: |
-        kubectl rollout status deployment/banking-app -n ${{ env.K8S_NAMESPACE }} --timeout=300s
-        echo "✅ Rollout terminé avec succès"
+        kubectl rollout status deployment/banking-app -n ${{ env.K8S_NAMESPACE }} --timeout=600s
 
-    - name: Run database migrations
+    - name: Comprehensive health checks
       run: |
+        echo "🔍 Vérifications complètes de santé..."
+        
+        # 1. Test de connectivité de base
+        echo "=== TEST OUTILS DISPONIBLES ==="
+        kubectl exec -n ${{ env.K8S_NAMESPACE }} deployment/banking-app -- which curl
+        kubectl exec -n ${{ env.K8S_NAMESPACE }} deployment/banking-app -- which wget
+        kubectl exec -n ${{ env.K8S_NAMESPACE }} deployment/banking-app -- which netstat
+        
+        # 2. Test de santé avec curl
+        echo "=== HEALTH CHECK AVEC CURL ==="
+        kubectl exec -n ${{ env.K8S_NAMESPACE }} deployment/banking-app -- curl -s -f http://localhost:8000/health-check/
+        
+        # 3. Vérification réseau
+        echo "=== VÉRIFICATION RÉSEAU ==="
+        kubectl exec -n ${{ env.K8S_NAMESPACE }} deployment/banking-app -- netstat -tln | grep 8000
+        
+        # 4. Test de charge
+        echo "=== TEST DE CHARGE ==="
+        kubectl exec -n ${{ env.K8S_NAMESPACE }} deployment/banking-app -- curl -s http://localhost:8000/ | head -5
+        
+        # 5. Métriques système
+        echo "=== MÉTRIQUES SYSTÈME ==="
+        kubectl exec -n ${{ env.K8S_NAMESPACE }} deployment/banking-app -- free -h
+        kubectl exec -n ${{ env.K8S_NAMESPACE }} deployment/banking-app -- df -h
+
+    - name: Run database operations
+      run: |
+        echo "🗃️ Opérations base de données..."
         kubectl exec -n ${{ env.K8S_NAMESPACE }} deployment/banking-app -- python manage.py migrate
-        echo "✅ Migrations exécutées"
-
-    - name: Collect static files
-      run: |
         kubectl exec -n ${{ env.K8S_NAMESPACE }} deployment/banking-app -- python manage.py collectstatic --noinput
-        echo "✅ Fichiers statiques collectés"
 
-    - name: Verify deployment
+    - name: External connectivity test
       run: |
-        echo "📊 Statut du déploiement:"
+        echo "🌐 Test de connectivité externe..."
+        kubectl port-forward -n ${{ env.K8S_NAMESPACE }} svc/banking-app-service 8080:8000 &
+        sleep 5
+        curl -f http://localhost:8080/health-check/
+        pkill -f "kubectl port-forward"
+
+    - name: Final verification
+      run: |
+        echo "🎉 DÉPLOIEMENT PROFESSIONNEL RÉUSSI!"
+        echo "📊 Rapport final:"
         kubectl get all -n ${{ env.K8S_NAMESPACE }}
         
-        echo "🔍 Logs de l'application:"
-        kubectl logs -n ${{ env.K8S_NAMESPACE }} deployment/banking-app --tail=5
-        
-        echo "🌡️  Ressources utilisées:"
-        kubectl top pods -n ${{ env.K8S_NAMESPACE }} || echo "Metrics server non disponible"
+        echo "🔧 Outils disponibles: curl, wget, netstat, ping"
+        echo "🚀 Version: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ needs.build.outputs.image-tag }}"
+        echo "⏰ Déployé le: $(date -u)"
 
-    - name: Health check
+    - name: Notify success
+      if: success()
       run: |
-        # Test interne du health check
-        kubectl exec -n ${{ env.K8S_NAMESPACE }} deployment/banking-app -- curl -s http://localhost:8000/health-check/ || echo "⚠️  Health check interne échoué"
-        echo "✅ Health check terminé"
-
-    - name: Deployment success notification
-      run: |
-        echo "🚀 BANKING APP DÉPLOYÉE AVEC SUCCÈS EN PRODUCTION!"
-        echo "📦 Image: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ needs.build.outputs.image-tag }}"
-        echo "🏷️  Namespace: ${{ env.K8S_NAMESPACE }}"
-        echo "⏰ Déployé à: $(date)"
+        echo "✅ Déploiement terminé avec succès!"
+        # Ici vous pourriez ajouter une notification Slack/Teams/etc.

@@ -52,7 +52,7 @@ jobs:
         output: trivy-results.sarif
 
     - name: Upload security scan results
-      uses: github/codeql-action/upload-sarif@v2
+      uses: github/codeql-action/upload-sarif@v3 # Updated from v2 to v3
       with:
         sarif_file: trivy-results.sarif
 
@@ -76,7 +76,7 @@ jobs:
     - name: Ensure secrets exist
       run: |
         if ! kubectl get secret banking-app-secrets -n ${{ env.K8S_NAMESPACE }} > /dev/null 2>&1; then
-          echo "🔐 Création des secrets..."
+          echo "🔐 Creating secrets..."
           kubectl create secret generic banking-app-secrets -n ${{ env.K8S_NAMESPACE }} \
             --from-literal=SECRET_KEY='prod-$(date +%s)' \
             --from-literal=DATABASE_URL='sqlite:///db.sqlite3'
@@ -95,40 +95,40 @@ jobs:
 
     - name: Comprehensive health checks
       run: |
-        echo "🔍 Vérifications complètes de santé..."
+        echo "🔍 Comprehensive health checks..."
         
-        # 1. Test de connectivité de base
-        echo "=== TEST OUTILS DISPONIBLES ==="
+        # 1. Basic connectivity test
+        echo "=== AVAILABLE TOOLS TEST ==="
         kubectl exec -n ${{ env.K8S_NAMESPACE }} deployment/banking-app -- which curl
         kubectl exec -n ${{ env.K8S_NAMESPACE }} deployment/banking-app -- which wget
         kubectl exec -n ${{ env.K8S_NAMESPACE }} deployment/banking-app -- which netstat
         
-        # 2. Test de santé avec curl
-        echo "=== HEALTH CHECK AVEC CURL ==="
+        # 2. Health check with curl
+        echo "=== HEALTH CHECK WITH CURL ==="
         kubectl exec -n ${{ env.K8S_NAMESPACE }} deployment/banking-app -- curl -s -f http://localhost:8000/health-check/
         
-        # 3. Vérification réseau
-        echo "=== VÉRIFICATION RÉSEAU ==="
+        # 3. Network verification
+        echo "=== NETWORK VERIFICATION ==="
         kubectl exec -n ${{ env.K8S_NAMESPACE }} deployment/banking-app -- netstat -tln | grep 8000
         
-        # 4. Test de charge
-        echo "=== TEST DE CHARGE ==="
+        # 4. Load test
+        echo "=== LOAD TEST ==="
         kubectl exec -n ${{ env.K8S_NAMESPACE }} deployment/banking-app -- curl -s http://localhost:8000/ | head -5
         
-        # 5. Métriques système
-        echo "=== MÉTRIQUES SYSTÈME ==="
+        # 5. System metrics
+        echo "=== SYSTEM METRICS ==="
         kubectl exec -n ${{ env.K8S_NAMESPACE }} deployment/banking-app -- free -h
         kubectl exec -n ${{ env.K8S_NAMESPACE }} deployment/banking-app -- df -h
 
     - name: Run database operations
       run: |
-        echo "🗃️ Opérations base de données..."
+        echo "🗃️ Database operations..."
         kubectl exec -n ${{ env.K8S_NAMESPACE }} deployment/banking-app -- python manage.py migrate
         kubectl exec -n ${{ env.K8S_NAMESPACE }} deployment/banking-app -- python manage.py collectstatic --noinput
 
     - name: External connectivity test
       run: |
-        echo "🌐 Test de connectivité externe..."
+        echo "🌐 External connectivity test..."
         kubectl port-forward -n ${{ env.K8S_NAMESPACE }} svc/banking-app-service 8080:8000 &
         sleep 5
         curl -f http://localhost:8080/health-check/
@@ -136,16 +136,16 @@ jobs:
 
     - name: Final verification
       run: |
-        echo "🎉 DÉPLOIEMENT PROFESSIONNEL RÉUSSI!"
-        echo "📊 Rapport final:"
+        echo "🎉 PROFESSIONAL DEPLOYMENT SUCCESSFUL!"
+        echo "📊 Final report:"
         kubectl get all -n ${{ env.K8S_NAMESPACE }}
         
-        echo "🔧 Outils disponibles: curl, wget, netstat, ping"
+        echo "🔧 Available tools: curl, wget, netstat, ping"
         echo "🚀 Version: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ needs.build.outputs.image-tag }}"
-        echo "⏰ Déployé le: $(date -u)"
+        echo "⏰ Deployed on: $(date -u)"
 
     - name: Notify success
       if: success()
       run: |
-        echo "✅ Déploiement terminé avec succès!"
-        # Ici vous pourriez ajouter une notification Slack/Teams/etc.
+        echo "✅ Deployment completed successfully!"
+        # Here you could add a Slack/Teams/etc. notification.

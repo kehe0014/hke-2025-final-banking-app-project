@@ -1,8 +1,10 @@
-name: Deploy to Production
+name: Deploy to Production - Pro
 
 on:
   push:
     branches: [ main ]
+  release:
+    types: [ published ]
 
 env:
   REGISTRY: docker.io
@@ -17,11 +19,25 @@ jobs:
     steps:
     - name: Checkout code
       uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+
+    - name: Debug file structure
+      run: |
+        echo "📁 Structure complète du repository:"
+        find . -type f -name "*.yaml" -o -name "*.yml" | sort
+        echo ""
+        echo "📁 Contenu du répertoire k8s:"
+        ls -la k8s/ 2>/dev/null || echo "❌ Répertoire k8s non trouvé"
+        echo ""
+        echo "📁 Contenu racine:"
+        ls -la
 
     - name: Generate image tag
       id: tag
       run: |
-        echo "tag=${{ github.sha }}" >> $GITHUB_OUTPUT
+        SHORT_SHA=$(echo ${{ github.sha }} | cut -c1-8)
+        echo "tag=$SHORT_SHA" >> $GITHUB_OUTPUT
 
     - name: Set up Docker Buildx
       uses: docker/setup-buildx-action@v3
@@ -36,6 +52,9 @@ jobs:
       run: |
         docker build -t ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.tag.outputs.tag }} .
         docker push ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.tag.outputs.tag }}
+        
+        docker tag ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.tag.outputs.tag }} ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest
+        docker push ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest
 
   deploy:
     needs: build
@@ -43,78 +62,85 @@ jobs:
     environment: production
     
     steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+
+    - name: Verify Kubernetes files exist
+      run: |
+        echo "🔍 Vérification des fichiers Kubernetes..."
+        if [ -f "k8s/redis-deployment-prod.yaml" ]; then
+          echo "✅ k8s/redis-deployment-prod.yaml existe"
+          cat k8s/redis-deployment-prod.yaml
+        else
+          echo "❌ k8s/redis-deployment-prod.yaml n'existe pas"
+          echo "📁 Contenu de k8s/:"
+          ls -la k8s/ 2>/dev/null || echo "Répertoire k8s non trouvé"
+          exit 1
+        fi
+        
+        if [ -f "k8s/service-prod.yaml" ]; then
+          echo "✅ k8s/service-prod.yaml existe"
+          cat k8s/service-prod.yaml
+        else
+          echo "❌ k8s/service-prod.yaml n'existe pas"
+          exit 1
+        fi
+
     - name: Configure Kubernetes
       run: |
         mkdir -p $HOME/.kube
         echo "${{ secrets.K8S_PROD_CONFIG }}" | base64 -d > $HOME/.kube/config
         chmod 600 $HOME/.kube/config
 
-    - name: Verify cluster access
+    - name: Clean existing resources
       run: |
-        kubectl cluster-info
-        kubectl get nodes
-
-    - name: Ensure secrets exist
-      run: |
-        # Créer les secrets s'ils n'existent pas
-        if ! kubectl get secret banking-app-secrets -n ${{ env.K8S_NAMESPACE }} > /dev/null 2>&1; then
-          echo "🔐 Création des secrets..."
-          kubectl create secret generic banking-app-secrets -n ${{ env.K8S_NAMESPACE }} \
-            --from-literal=SECRET_KEY='prod-secret-$(date +%s)' \
-            --from-literal=DATABASE_URL='sqlite:///db.sqlite3'
-        else
-          echo "✅ Secrets déjà existants"
-        fi
+        echo "🧹 Nettoyage des ressources existantes..."
+        # Supprimer les ressources existantes pour un déploiement propre
+        kubectl delete deployment banking-app -n ${{ env.K8S_NAMESPACE }} --ignore-not-found=true
+        kubectl delete service banking-app-service -n ${{ env.K8S_NAMESPACE }} --ignore-not-found=true
+        kubectl delete deployment redis -n ${{ env.K8S_NAMESPACE }} --ignore-not-found=true
+        echo "✅ Nettoyage terminé"
 
     - name: Deploy Application Stack
       run: |
-        # Créer le namespace si nécessaire
+        echo "🚀 Déploiement de l'application..."
+        
+        # Créer le namespace
         kubectl create namespace ${{ env.K8S_NAMESPACE }} --dry-run=client -o yaml | kubectl apply -f -
         
         # Déployer Redis
         kubectl apply -f k8s/redis-deployment-prod.yaml -n ${{ env.K8S_NAMESPACE }}
         
-        # Mettre à jour l'image du deployment
-        kubectl set image deployment/banking-app banking-app=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ needs.build.outputs.image-tag }} -n ${{ env.K8S_NAMESPACE }}
-        
-        # Appliquer les services
+        # Déployer l'application
         kubectl apply -f k8s/service-prod.yaml -n ${{ env.K8S_NAMESPACE }}
+        
+        # Mettre à jour l'image
+        kubectl set image deployment/banking-app banking-app=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ needs.build.outputs.image-tag }} -n ${{ env.K8S_NAMESPACE }}
 
     - name: Wait for rollout
       run: |
-        echo "🔄 Attente du déploiement..."
+        echo "⏳ Attente du déploiement..."
         kubectl rollout status deployment/banking-app -n ${{ env.K8S_NAMESPACE }} --timeout=600s
+        kubectl rollout status deployment/redis -n ${{ env.K8S_NAMESPACE }} --timeout=300s
 
-    - name: Run database migrations
+    - name: Run database operations
       run: |
-        echo "🗃️ Exécution des migrations..."
+        echo "🗃️ Opérations base de données..."
         kubectl exec -n ${{ env.K8S_NAMESPACE }} deployment/banking-app -- python manage.py migrate
+        kubectl exec -n ${{ env.K8S_NAMESPACE }} deployment/banking-app -- python manage.py collectstatic --noinput
 
-    - name: Collect static files
-      run: |
-        echo "📦 Collecte des fichiers statiques..."
-        kubectl exec -n ${{ env.KUS_NAMESPACE }} deployment/banking-app -- python manage.py collectstatic --noinput
-
-    - name: Verify deployment
+    - name: Final verification
       run: |
         echo "🎉 DÉPLOIEMENT RÉUSSI!"
-        echo "📊 Statut:"
+        echo "📊 État du cluster:"
         kubectl get all -n ${{ env.K8S_NAMESPACE }}
         
-        echo "🔍 Health check:"
-        kubectl exec -n ${{ env.K8S_NAMESPACE }} deployment/banking-app -- curl -s http://localhost:8000/health-check/
-        
-        echo "🚀 Application déployée: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ needs.build.outputs.image-tag }}"
+        echo "🔍 Logs de l'application:"
+        kubectl logs -n ${{ env.K8S_NAMESPACE }} deployment/banking-app --tail=10
 
-    - name: Create GitHub deployment
-      uses: actions/github-script@v6
-      with:
-        script: |
-          github.rest.repos.createDeployment({
-            owner: context.repo.owner,
-            repo: context.repo.repo,
-            ref: context.sha,
-            environment: 'production',
-            auto_merge: false,
-            description: 'Banking App deployment to production'
-          })
+    - name: Notify success
+      if: success()
+      run: |
+        echo "✅ Déploiement terminé avec succès!"

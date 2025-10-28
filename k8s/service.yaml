@@ -1,0 +1,29 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: banking-app-service
+  namespace: banking-app
+  labels:
+    app: banking-app
+spec:
+  selector:
+    app: banking-app
+  ports:
+  - port: 8000
+    targetPort: 8000
+  type: ClusterIP
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: redis-service
+  namespace: banking-app
+  labels:
+    app: redis
+spec:
+  selector:
+    app: redis
+  ports:
+  - port: 6379
+    targetPort: 6379
+  type: ClusterIP

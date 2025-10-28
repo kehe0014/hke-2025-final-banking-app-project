@@ -1,0 +1,58 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: banking-app
+  namespace: banking-app
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: banking-app
+  template:
+    metadata:
+      labels:
+        app: banking-app
+    spec:
+      containers:
+      - name: banking-app
+        image: tdksoft341/tdk-banking-app:v1.0.0
+        imagePullPolicy: Always
+        ports:
+        - containerPort: 8000
+        env:
+        - name: DEBUG
+          value: "True"
+        - name: SECRET_KEY
+          value: "temporary-secret-key-for-debug-12345"
+        - name: DATABASE_URL
+          value: "sqlite:///db.sqlite3"
+        - name: ALLOWED_HOSTS
+          value: "*"
+        - name: CELERY_BROKER_URL
+          value: "redis://redis-service:6379/0"
+        - name: CELERY_RESULT_BACKEND
+          value: "redis://redis-service:6379/0"
+        # AUCUN health check - l'application sera toujours Ready
+        command: ["/bin/sh"]
+        args: ["-c", "python manage.py migrate && python manage.py collectstatic --noinput && gunicorn bankingsystem.wsgi:application --bind 0.0.0.0:8000"]
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: redis
+  namespace: banking-app
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: redis
+  template:
+    metadata:
+      labels:
+        app: redis
+    spec:
+      containers:
+      - name: redis
+        image: redis:7-alpine
+        ports:
+        - containerPort: 6379

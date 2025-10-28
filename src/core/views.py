@@ -1,5 +1,8 @@
 from django.db.models import Sum
 from django.shortcuts import render
+from django.http import JsonResponse
+from django.db import connection
+from django.core.cache import cache
 
 from transactions.models import Diposit, Withdrawal, Interest
 
@@ -31,3 +34,21 @@ def home(request):
 
 def about(request):
     return render(request, "core/about.html", {})
+
+
+def health_check(request): 
+    """Health check endpoint for Kubernetes"""
+    try:
+        with connection.cursor() as cursor:
+            cursor.execute("SELECT 1")
+        
+        return JsonResponse({
+            "status": "healthy",
+            "database": "ok",
+            "service": "banking-app"
+        })
+    except Exception as e:
+        return JsonResponse({
+            "status": "unhealthy",
+            "error": str(e)
+        }, status=500)

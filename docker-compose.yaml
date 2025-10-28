@@ -1,0 +1,50 @@
+services:
+  web:
+    build: .
+    ports:
+      - "8000:8000"
+    environment:
+      - DEBUG=True
+      - CELERY_BROKER_URL=redis://redis:6379/0
+      - CELERY_RESULT_BACKEND=redis://redis:6379/0
+    volumes:
+      - ./src:/app
+      - ./data:/app/data  # Dossier pour la base de données
+    working_dir: /app
+    command: >
+      sh -c "python manage.py migrate &&
+             python manage.py collectstatic --noinput &&
+             gunicorn bankingsystem.wsgi:application --bind 0.0.0.0:8000"
+    depends_on:
+      - redis
+
+  redis:
+    image: redis:7-alpine
+
+  celery:
+    build: .
+    command: celery -A bankingsystem worker --loglevel=info
+    volumes:
+      - ./src:/app
+      - ./data:/app/data
+    environment:
+      - DEBUG=True
+      - CELERY_BROKER_URL=redis://redis:6379/0
+      - CELERY_RESULT_BACKEND=redis://redis:6379/0
+    depends_on:
+      - redis
+      - web
+
+  celery-beat:
+    build: .
+    command: celery -A bankingsystem beat --loglevel=info
+    volumes:
+      - ./src:/app
+      - ./data:/app/data
+    environment:
+      - DEBUG=True
+      - CELERY_BROKER_URL=redis://redis:6379/0
+      - CELERY_RESULT_BACKEND=redis://redis:6379/0
+    depends_on:
+      - redis
+      - web

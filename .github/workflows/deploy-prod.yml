@@ -1,0 +1,104 @@
+name: Deploy Banking App to Production
+
+on:
+  push:
+    branches: [ main ]
+  release:
+    types: [ published ]
+
+env:
+  REGISTRY: docker.io
+  IMAGE_NAME: tdksoft341/tdk-banking-app
+  K8S_NAMESPACE: banking-app-prod
+  IMAGE_TAG: ${{ github.sha }}
+
+jobs:
+  # Build et tests
+  build-and-test:
+    runs-on: ubuntu-latest
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@v3
+
+    - name: Log in to Docker Hub
+      uses: docker/login-action@v3
+      with:
+        username: ${{ secrets.DOCKERHUB_USERNAME }}
+        password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+    - name: Build and push Docker image
+      run: |
+        docker build -t ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ env.IMAGE_TAG }} .
+        docker push ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ env.IMAGE_TAG }}
+
+    - name: Run tests
+      run: |
+        cd src
+        pip install -r requirements.txt
+        python manage.py test
+
+  # Déploiement Kubernetes
+  deploy-to-prod:
+    needs: build-and-test
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push' || github.event_name == 'release'
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Configure Kubernetes
+      run: |
+        mkdir -p $HOME/.kube
+        echo "${{ secrets.K8S_PROD_CONFIG }}" | base64 -d > $HOME/.kube/config
+        chmod 600 $HOME/.kube/config
+
+    - name: Create namespace if not exists
+      run: |
+        kubectl create namespace ${{ env.K8S_NAMESPACE }} --dry-run=client -o yaml | kubectl apply -f -
+
+    - name: Deploy Redis
+      run: |
+        kubectl apply -f k8s/redis-deployment-prod.yaml -n ${{ env.K8S_NAMESPACE }}
+
+    - name: Deploy Banking App
+      run: |
+        # Mettre à jour l'image dans le deployment
+        sed -i 's|tdksoft341/tdk-banking-app:v1.0.0|${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ env.IMAGE_TAG }}|g' k8s/deployment-prod.yaml
+        kubectl apply -f k8s/deployment-prod.yaml -n ${{ env.K8S_NAMESPACE }}
+
+    - name: Deploy Services
+      run: |
+        kubectl apply -f k8s/service-prod.yaml -n ${{ env.K8S_NAMESPACE }}
+
+    - name: Wait for deployment
+      run: |
+        kubectl rollout status deployment/banking-app -n ${{ env.K8S_NAMESPACE }} --timeout=300s
+
+    - name: Run migrations
+      run: |
+        kubectl exec -n ${{ env.K8S_NAMESPACE }} deployment/banking-app -- python manage.py migrate
+
+    - name: Collect static files
+      run: |
+        kubectl exec -n ${{ env.K8S_NAMESPACE }} deployment/banking-app -- python manage.py collectstatic --noinput
+
+    - name: Health check
+      run: |
+        # Test interne
+        kubectl exec -n ${{ env.K8S_NAMESPACE }} deployment/banking-app -- curl -s http://localhost:8000/health-check/
+        
+        # Test via port-forward
+        kubectl port-forward -n ${{ env.K8S_NAMESPACE }} svc/banking-app-service 8080:8000 &
+        sleep 10
+        curl -f http://localhost:8080/health-check/ || exit 1
+        pkill -f "kubectl port-forward"
+
+    - name: Deployment success
+      run: |
+        echo "🚀 Banking App déployée avec succès en production!"
+        echo "📊 Statut:"
+        kubectl get all -n ${{ env.K8S_NAMESPACE }}

@@ -2,58 +2,97 @@ name: GitOps Deployment with Argo CD
 
 on:
   push:
-    branches: [ main, develop ]
+    branches: [ main, develop, feature/* ]
   release:
     types: [ published ]
-  pull_request:
-    branches: [ main ]
+
+env:
+  REGISTRY: "docker.io"
+  IMAGE_NAME: "tdksoft341/tdk-banking-app"
+  GITOPS_PATH: "gitops"
 
 jobs:
+  determine-context:
+    runs-on: ubuntu-latest
+    outputs:
+      environment: ${{ steps.env.outputs.environment }}
+      image-tag: ${{ steps.tag.outputs.tag }}
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Determine environment
+      id: env
+      run: |
+        echo "🔍 Determining environment from: ${{ github.ref }}"
+        
+        if [[ "${{ github.ref }}" == "refs/heads/main" ]]; then
+          echo "environment=production" >> $GITHUB_OUTPUT
+          echo "✅ Environment: production"
+        elif [[ "${{ github.ref }}" == "refs/heads/develop" ]]; then
+          echo "environment=staging" >> $GITHUB_OUTPUT
+          echo "✅ Environment: staging"
+        else
+          echo "environment=development" >> $GITHUB_OUTPUT
+          echo "✅ Environment: development"
+        fi
+
+    - name: Generate image tag
+      id: tag
+      run: |
+        echo "🔍 Generating image tag..."
+        chmod +x .github/scripts/generate-tag.sh
+        ./.github/scripts/generate-tag.sh
+        echo "✅ Generated tag: ${{ steps.tag.outputs.tag }}"
+
   build-and-test:
+    needs: determine-context
     uses: ./.github/workflows/build-and-test.yml
     with:
-      registry: "docker.io"
-      image_name: "tdksoft341/tdk-banking-app"
+      registry: ${{ env.REGISTRY }}
+      image_name: ${{ env.IMAGE_NAME }}
+      environment: ${{ needs.determine-context.outputs.environment }}
+      image_tag: ${{ needs.determine-context.outputs.image-tag }}
     secrets: 
       DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
       DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
 
   update-gitops-manifests:
-    needs: build-and-test
+    needs: determine-context
     uses: ./.github/workflows/update-gitops.yml
     with:
-      gitops_path: "gitops"
-      environment: ${{ needs.build-and-test.outputs.environment }}
-      image_tag: ${{ needs.build-and-test.outputs.image-tag }}
+      gitops_path: ${{ env.GITOPS_PATH }}
+      environment: ${{ needs.determine-context.outputs.environment }}
+      image_tag: ${{ needs.determine-context.outputs.image-tag }}
     secrets: 
       GHA_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
   argocd-sync:
-    needs: [build-and-test, update-gitops-manifests]
-    if: github.ref == 'refs/heads/main'
+    needs: [determine-context, update-gitops-manifests]
+    if: needs.determine-context.outputs.environment == 'production'
     uses: ./.github/workflows/argocd-sync.yml
     with:
-      environment: ${{ needs.build-and-test.outputs.environment }}
+      environment: ${{ needs.determine-context.outputs.environment }}
     secrets: 
       K8S_PROD_CONFIG: ${{ secrets.K8S_PROD_CONFIG }}
 
   verification:
-    needs: [build-and-test, update-gitops-manifests]
+    needs: [determine-context, update-gitops-manifests]
     uses: ./.github/workflows/verification.yml
     with:
-      environment: ${{ needs.build-and-test.outputs.environment }}
-      image_tag: ${{ needs.build-and-test.outputs.image-tag }}
+      environment: ${{ needs.determine-context.outputs.environment }}
+      image_tag: ${{ needs.determine-context.outputs.image-tag }}
     secrets: 
       K8S_PROD_CONFIG: ${{ secrets.K8S_PROD_CONFIG }}
       K8S_STAGING_CONFIG: ${{ secrets.K8S_STAGING_CONFIG }}
 
   notify:
-    needs: [verification]
+    needs: [determine-context, verification]
     if: always()
     uses: ./.github/workflows/notify.yml
     with:
-      environment: ${{ needs.build-and-test.outputs.environment }}
-      image_tag: ${{ needs.build-and-test.outputs.image-tag }}
+      environment: ${{ needs.determine-context.outputs.environment }}
+      image_tag: ${{ needs.determine-context.outputs.image-tag }}
       status: ${{ needs.verification.result }}
     secrets:
       SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}

@@ -1,0 +1,42 @@
+# Fichier temporaire pour tester: .github/workflows/test-context.yml
+name: Test Context Determination
+
+on:
+  push:
+    branches: [ main, develop ]
+
+jobs:
+  determine-context:
+    runs-on: ubuntu-latest
+    outputs:
+      environment: ${{ steps.env.outputs.environment }}
+      image-tag: ${{ steps.tag.outputs.tag }}
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Determine environment
+      id: env
+      run: |
+        echo "GITHUB_REF: $GITHUB_REF"
+        if [[ "$GITHUB_REF" == "refs/heads/main" ]]; then
+          echo "environment=production" >> $GITHUB_OUTPUT
+        elif [[ "$GITHUB_REF" == "refs/heads/develop" ]]; then
+          echo "environment=staging" >> $GITHUB_OUTPUT
+        else
+          echo "environment=development" >> $GITHUB_OUTPUT
+        fi
+        echo "Environment output: $(cat $GITHUB_OUTPUT)"
+
+    - name: Generate image tag
+      id: tag
+      run: |
+        chmod +x .github/scripts/generate-tag.sh
+        ./.github/scripts/generate-tag.sh
+        echo "Tag output: $(cat $GITHUB_OUTPUT)"
+
+    - name: Show final outputs
+      run: |
+        echo "FINAL OUTPUTS:"
+        echo "environment: ${{ steps.env.outputs.environment }}"
+        echo "image-tag: ${{ steps.tag.outputs.tag }}"

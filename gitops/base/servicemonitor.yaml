@@ -1,0 +1,32 @@
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: banking-app-service-monitor
+  labels:
+    app.kubernetes.io/name: banking-app
+    app.kubernetes.io/component: monitoring
+    app.kubernetes.io/part-of: banking-system
+    release: monitoring
+spec:
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: banking-app
+  endpoints:
+  - port: http
+    interval: 30s
+    path: /metrics
+    scheme: http
+    scrapeTimeout: 10s
+    relabelings:
+    - sourceLabels: [__meta_kubernetes_pod_node_name]
+      targetLabel: instance
+      replacement: ${1}
+    - sourceLabels: [__meta_kubernetes_namespace]
+      targetLabel: namespace
+      replacement: ${1}
+    - sourceLabels: [__meta_kubernetes_pod_name]
+      targetLabel: pod
+      replacement: ${1}
+  namespaceSelector:
+    matchNames:
+    - banking-app-prod

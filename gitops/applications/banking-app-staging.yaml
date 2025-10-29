@@ -1,0 +1,20 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: banking-app-staging
+  namespace: argocd
+spec:
+  project: default
+  source:
+    repoURL: 'https://github.com/kehe0014/banking-app-gitops.git'
+    targetRevision: HEAD
+    path: overlays/staging
+  destination:
+    server: 'https://kubernetes.default.svc'
+    namespace: banking-app-staging
+  syncPolicy:
+    automated:
+      prune: false
+      selfHeal: true
+    syncOptions:
+    - CreateNamespace=true

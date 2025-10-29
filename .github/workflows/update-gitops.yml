@@ -30,21 +30,10 @@ jobs:
 
     - name: Debug parameters
       run: |
-        echo "🔍 PARAMETER DEBUG:"
-        echo "inputs.gitops_path: '${{ inputs.gitops_path }}'"
-        echo "inputs.environment: '${{ inputs.environment }}'"
-        echo "inputs.image_tag: '${{ inputs.image_tag }}'"
-        echo "needs.build-and-test.outputs.image-tag: '${{ needs.build-and-test.outputs.image-tag }}'"
-        echo "needs.build-and-test.outputs.environment: '${{ needs.build-and-test.outputs.environment }}'"
-        echo ""
-        echo "📁 VERIFYING STRUCTURE:"
-        echo "Current directory: $(pwd)"
-        echo "GitOps path exists: $(test -d '${{ inputs.gitops_path }}' && echo 'YES' || echo 'NO')"
-        echo "Overlays exist: $(test -d '${{ inputs.gitops_path }}/overlays' && echo 'YES' || echo 'NO')"
-        echo "Environment overlay exists: $(test -d '${{ inputs.gitops_path }}/overlays/${{ inputs.environment }}' && echo 'YES' || echo 'NO')"
-        echo ""
-        echo "📄 LISTING FILES:"
-        find "${{ inputs.gitops_path }}/overlays/${{ inputs.environment }}" -name "*.yaml" -o -name "*.yml" | sort
+        echo "🎯 UPDATE GITOPS INPUTS:"
+        echo "gitops_path: ${{ inputs.gitops_path }}"
+        echo "environment: ${{ inputs.environment }}"
+        echo "image_tag: ${{ inputs.image_tag }}"
 
     - name: Configure Git
       run: |
@@ -53,20 +42,14 @@ jobs:
 
     - name: Update manifests with new image tag
       run: |
-        echo "🚀 EXECUTING UPDATE SCRIPT:"
-        echo "Parameters passed to script:"
-        echo "  Environment: '${{ inputs.environment }}'"
-        echo "  Image Tag: '${{ inputs.image_tag }}'"
-        echo "  GitOps Path: '${{ inputs.gitops_path }}'"
-        
+        echo "🚀 Executing update script..."
         chmod +x .github/scripts/update-manifests.sh
         ./.github/scripts/update-manifests.sh "${{ inputs.environment }}" "${{ inputs.image_tag }}" "${{ inputs.gitops_path }}"
 
     - name: Commit and push changes
       run: |
-        echo "📦 CHECKING FOR CHANGES:"
+        echo "📦 Checking for changes..."
         git status
-        git diff
         
         if git diff --quiet; then
           echo "🤷 No changes to commit"

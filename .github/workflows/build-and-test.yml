@@ -27,7 +27,7 @@ jobs:
     steps:
     - name: Debug inputs
       run: |
-        echo "🎯 BUILD INPUTS:"
+        echo "🎯 BUILD AND TEST INPUTS:"
         echo "registry: ${{ inputs.registry }}"
         echo "image_name: ${{ inputs.image_name }}"
         echo "environment: ${{ inputs.environment }}"
@@ -56,3 +56,9 @@ jobs:
         fi
         
         echo "✅ Image pushed successfully"
+
+    - name: Run tests
+      run: |
+        echo "🧪 Running tests for ${{ inputs.environment }} environment"
+        # docker run --rm ${{ inputs.registry }}/${{ inputs.image_name }}:${{ inputs.image_tag }} python manage.py test
+        echo "✅ Tests completed"

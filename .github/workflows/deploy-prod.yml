@@ -111,7 +111,7 @@ jobs:
         kubectl create namespace ${{ env.K8S_NAMESPACE }} --dry-run=client -o yaml | kubectl apply -f -
         
         # Déployer Redis
-        kubectl apply -f k8s/redis-deployment-prod.yaml -n ${{ env.K8S_NAMESPACE }}
+        # kubectl apply -f k8s/redis-deployment-prod.yaml -n ${{ env.K8S_NAMESPACE }}
         
         # Déployer l'application
         kubectl apply -f k8s/service-prod.yaml -n ${{ env.K8S_NAMESPACE }}

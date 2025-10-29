@@ -15,15 +15,15 @@ on:
       K8S_STAGING_CONFIG:
         required: false
 
-outputs:
-  result:
-    description: "Deployment result"
-    value: ${{ steps.result.outputs.status }}
-
 jobs:
   verification:
     runs-on: ubuntu-latest
     environment: ${{ inputs.environment }}
+    
+    outputs:
+      result:
+        description: "Deployment result"
+        value: ${{ steps.result.outputs.status }}
 
     steps:
     - name: Configure Kubernetes

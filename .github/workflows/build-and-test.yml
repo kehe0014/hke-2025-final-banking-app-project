@@ -15,20 +15,17 @@ on:
       DOCKERHUB_TOKEN:
         required: true
 
-outputs:
-  image-tag:
-    description: "Generated image tag"
-    value: ${{ steps.tag.outputs.tag }}
-  environment:
-    description: "Target environment"
-    value: ${{ steps.env.outputs.environment }}
-
 jobs:
   build-and-test:
     runs-on: ubuntu-latest
+    
     outputs:
-      image-tag: ${{ steps.tag.outputs.tag }}
-      environment: ${{ steps.env.outputs.environment }}
+      image-tag:
+        description: "Generated image tag"
+        value: ${{ steps.tag.outputs.tag }}
+      environment:
+        description: "Target environment"
+        value: ${{ steps.env.outputs.environment }}
 
     steps:
     - name: Checkout application code

@@ -1,0 +1,26 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: banking-app
+spec:
+  replicas: 1
+  template:
+    spec:
+      containers:
+      - name: banking-app
+        resources:
+          requests:
+            memory: "128Mi"
+            cpu: "100m"
+          limits:
+            memory: "256Mi"
+            cpu: "250m"
+        env:
+        - name: ENVIRONMENT
+          value: "development"
+        - name: DEBUG
+          value: "True"
+        - name: LOG_LEVEL
+          value: "DEBUG"
+        - name: DJANGO_SETTINGS_MODULE
+          value: "bankingsystem.settings.development"

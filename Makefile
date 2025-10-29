@@ -332,3 +332,174 @@ k8s-test-health: ## Teste le health check de l'application
 
 k8s-complete-fix: k8s-fix-allowed-hosts k8s-clean-restart k8s-test-health ## Correction complète du déploiement
 	@echo "$(GREEN)✅ Complete fix applied$(NC)"
+
+
+# ==============================================================================
+
+# Makefile for GitOps Deployment Validation
+# Usage: make validate-all
+
+# Configuration
+GITOPS_PATH := gitops
+WORKFLOWS_PATH := .github/workflows
+SCRIPTS_PATH := .github/scripts
+ACTIONS_PATH := .github/actions
+
+# Colors for output
+RED := \033[0;31m
+GREEN := \033[0;32m
+YELLOW := \033[0;33m
+BLUE := \033[0;34m
+NC := \033[0m # No Color
+
+.PHONY: help validate-all validate-workflows validate-scripts validate-gitops validate-k8s check-dependencies
+
+help:
+	@echo "$(BLUE)GitOps Validation Targets:$(NC)"
+	@echo "  $(GREEN)validate-all$(NC)       - Run all validations"
+	@echo "  $(GREEN)validate-workflows$(NC) - Validate GitHub Actions workflows"
+	@echo "  $(GREEN)validate-scripts$(NC)   - Validate shell scripts"
+	@echo "  $(GREEN)validate-gitops$(NC)    - Validate GitOps manifests"
+	@echo "  $(GREEN)validate-k8s$(NC)       - Validate Kubernetes manifests"
+	@echo "  $(GREEN)check-dependencies$(NC) - Check required tools"
+	@echo "  $(GREEN)dry-run$(NC)            - Dry run deployment simulation"
+
+validate-all: check-dependencies validate-scripts validate-workflows validate-gitops validate-k8s
+	@echo "$(GREEN)✅ All validations passed!$(NC)"
+
+check-dependencies:
+	@echo "$(BLUE)🔍 Checking dependencies...$(NC)"
+	@which docker >/dev/null 2>&1 || (echo "$(RED)❌ Docker is not installed$(NC)" && exit 1)
+	@which kubectl >/dev/null 2>&1 || (echo "$(YELLOW)⚠️  kubectl is not installed (optional)$(NC)")
+	@which yq >/dev/null 2>&1 || (echo "$(YELLOW)⚠️  yq is not installed (optional)$(NC)")
+	@which kustomize >/dev/null 2>&1 || (echo "$(YELLOW)⚠️  kustomize is not installed (optional)$(NC)")
+	@echo "$(GREEN)✅ Dependencies check completed$(NC)"
+
+validate-scripts:
+	@echo "$(BLUE)🔍 Validating shell scripts...$(NC)"
+	@find $(SCRIPTS_PATH) -name "*.sh" -type f | while read script; do \
+		echo "Validating $$script..."; \
+		chmod +x "$$script"; \
+		shellcheck -e SC2086 "$$script" || (echo "$(RED)❌ Script validation failed: $$script$(NC)" && exit 1); \
+	done
+	@echo "$(GREEN)✅ All shell scripts are valid$(NC)"
+
+validate-workflows:
+	@echo "$(BLUE)🔍 Validating GitHub Actions workflows...$(NC)"
+	@find $(WORKFLOWS_PATH) -name "*.yml" -o -name "*.yaml" | while read workflow; do \
+		echo "Validating $$workflow..."; \
+		if ! gh workflow view "$$workflow" >/dev/null 2>&1; then \
+			echo "$(YELLOW)⚠️  Could not validate $$workflow with GitHub CLI$(NC)"; \
+			echo "Checking syntax manually..."; \
+			python3 -c "import yaml; yaml.safe_load(open('$$workflow'))" || exit 1; \
+		fi; \
+	done
+	@echo "$(GREEN)✅ All workflows are syntactically valid$(NC)"
+
+validate-gitops:
+	@echo "$(BLUE)🔍 Validating GitOps structure...$(NC)"
+	@# Check directory structure
+	@test -d "$(GITOPS_PATH)/base" || (echo "$(RED)❌ Missing $(GITOPS_PATH)/base directory$(NC)" && exit 1)
+	@test -d "$(GITOPS_PATH)/overlays/prod" || (echo "$(RED)❌ Missing $(GITOPS_PATH)/overlays/prod directory$(NC)" && exit 1)
+	@test -d "$(GITOPS_PATH)/overlays/staging" || (echo "$(RED)❌ Missing $(GITOPS_PATH)/overlays/staging directory$(NC)" && exit 1)
+	@test -d "$(GITOPS_PATH)/overlays/dev" || (echo "$(RED)❌ Missing $(GITOPS_PATH)/overlays/dev directory$(NC)" && exit 1)
+	
+	@# Check required files
+	@for env in prod staging dev; do \
+		echo "Checking $$env overlay..."; \
+		test -f "$(GITOPS_PATH)/overlays/$$env/kustomization.yaml" || (echo "$(RED)❌ Missing $(GITOPS_PATH)/overlays/$$env/kustomization.yaml$(NC)" && exit 1); \
+	done
+	
+	@# Validate kustomization files
+	@find $(GITOPS_PATH) -name "kustomization.yaml" | while read kfile; do \
+		echo "Validating $$kfile..."; \
+		if which kustomize >/dev/null 2>&1; then \
+			kustomize build "$$(dirname $$kfile)" --load-restrictor LoadRestrictionsNone >/dev/null 2>&1 || (echo "$(RED)❌ Invalid kustomization: $$kfile$(NC)" && exit 1); \
+		else \
+			python3 -c "import yaml; yaml.safe_load(open('$$kfile'))" || (echo "$(RED)❌ Invalid YAML: $$kfile$(NC)" && exit 1); \
+		fi; \
+	done
+	
+	@echo "$(GREEN)✅ GitOps structure is valid$(NC)"
+
+validate-k8s:
+	@echo "$(BLUE)🔍 Validating Kubernetes manifests...$(NC)"
+	@find $(GITOPS_PATH) -name "*.yaml" -o -name "*.yml" | grep -v kustomization.yaml | while read manifest; do \
+		echo "Validating $$manifest..."; \
+		if which kubectl >/dev/null 2>&1; then \
+			kubectl apply --dry-run=client --validate=true -f "$$manifest" >/dev/null 2>&1 || (echo "$(RED)❌ Invalid Kubernetes manifest: $$manifest$(NC)" && exit 1); \
+		else \
+			python3 -c "import yaml; yaml.safe_load(open('$$manifest'))" || (echo "$(RED)❌ Invalid YAML: $$manifest$(NC)" && exit 1); \
+		fi; \
+	done
+	@echo "$(GREEN)✅ All Kubernetes manifests are valid$(NC)"
+
+dry-run:
+	@echo "$(BLUE)🚀 Running dry-run deployment simulation...$(NC)"
+	@echo "$(YELLOW)Simulating deployment for different branches:$(NC)"
+	@echo "1. Main branch (Production):"
+	@echo "   - Build image: docker.io/tdksoft341/tdk-banking-app:main-abc12345"
+	@echo "   - Update: gitops/overlays/prod/kustomization.yaml"
+	@echo "   - Argo CD sync: banking-app-prod"
+	@echo ""
+	@echo "2. Develop branch (Staging):"
+	@echo "   - Build image: docker.io/tdksoft341/tdk-banking-app:develop-def67890"
+	@echo "   - Update: gitops/overlays/staging/kustomization.yaml"
+	@echo "   - Argo CD sync: banking-app-staging"
+	@echo ""
+	@echo "3. Feature branch (Development):"
+	@echo "   - Build image: docker.io/tdksoft341/tdk-banking-app:feature-branch-12345678"
+	@echo "   - Update: gitops/overlays/dev/kustomization.yaml"
+	@echo "   - Argo CD sync: banking-app-dev"
+	@echo ""
+	@echo "$(GREEN)✅ Dry-run completed successfully$(NC)"
+
+check-secrets:
+	@echo "$(BLUE)🔐 Checking required secrets...$(NC)"
+	@echo "$(YELLOW)Required GitHub Secrets:$(NC)"
+	@echo "  - DOCKERHUB_USERNAME"
+	@echo "  - DOCKERHUB_TOKEN"
+	@echo "  - K8S_PROD_CONFIG (base64 encoded kubeconfig)"
+	@echo "  - K8S_STAGING_CONFIG (base64 encoded kubeconfig)"
+	@echo "  - SLACK_WEBHOOK_URL (optional)"
+	@echo ""
+	@echo "$(YELLOW)To encode kubeconfig:$(NC)"
+	@echo "  cat ~/.kube/config | base64 -w0"
+	@echo ""
+	@echo "$(GREEN)✅ Secrets checklist completed$(NC)"
+
+validate-image:
+	@echo "$(BLUE)🐳 Validating Docker image build...$(NC)"
+	@test -f "Dockerfile" || (echo "$(RED)❌ Dockerfile not found$(NC)" && exit 1)
+	@echo "Building test image..."
+	@docker build -t test-validation . --no-cache --progress=plain
+	@echo "$(GREEN)✅ Docker image builds successfully$(NC)"
+	@docker rmi test-validation >/dev/null 2>&1 || true
+
+setup-hooks:
+	@echo "$(BLUE)🔗 Setting up git hooks...$(NC)"
+	@echo '#!/bin/sh' > .git/hooks/pre-push
+	@echo 'echo "$(BLUE)🔍 Running pre-push validation...$(NC)"' >> .git/hooks/pre-push
+	@echo 'make validate-all' >> .git/hooks/pre-push
+	@chmod +x .git/hooks/pre-push
+	@echo "$(GREEN)✅ Git pre-push hook installed$(NC)"
+
+status:
+	@echo "$(BLUE)📊 Current validation status:$(NC)"
+	@echo "GitOps directory: $(shell if [ -d "$(GITOPS_PATH)" ]; then echo "$(GREEN)✅ Present$(NC)"; else echo "$(RED)❌ Missing$(NC)"; fi)"
+	@echo "Workflows: $(shell find $(WORKFLOWS_PATH) -name "*.yml" -o -name "*.yaml" | wc -l) files"
+	@echo "Scripts: $(shell find $(SCRIPTS_PATH) -name "*.sh" | wc -l) files"
+	@echo "GitOps manifests: $(shell find $(GITOPS_PATH) -name "*.yaml" -o -name "*.yml" | wc -l) files"
+	@echo "Dockerfile: $(shell if [ -f "Dockerfile" ]; then echo "$(GREEN)✅ Present$(NC)"; else echo "$(RED)❌ Missing$(NC)"; fi)"
+
+clean:
+	@echo "$(BLUE)🧹 Cleaning up...$(NC)"
+	@docker system prune -f >/dev/null 2>&1 || true
+	@find . -name "*.backup" -delete
+	@echo "$(GREEN)✅ Cleanup completed$(NC)"
+
+# Alias for common commands
+val: validate-all
+check: check-dependencies
+hooks: setup-hooks
+dr: dry-run

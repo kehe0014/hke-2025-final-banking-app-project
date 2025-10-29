@@ -151,40 +151,121 @@ jobs:
         chmod 600 $HOME/.kube/config
         echo "✅ Kubernetes configured for ${{ needs.determine-context.outputs.environment }}"
 
-    - name: Login to Argo CD
+    - name: Test Argo CD connectivity
       run: |
         ARGOCD_URL="https://argocd.178.254.23.139.nip.io"
-        echo "🔐 Logging in to Argo CD: $ARGOCD_URL"
-        echo "📦 Environment: ${{ needs.determine-context.outputs.environment }}"
+        echo "🔍 Testing connectivity to: $ARGOCD_URL"
         
-        argocd login $ARGOCD_URL \
+        # Tester si l'URL est accessible
+        if curl -k -I --connect-timeout 10 $ARGOCD_URL; then
+          echo "✅ Argo CD URL is accessible"
+        else
+          echo "❌ Cannot reach Argo CD URL"
+          echo "💡 Testing alternative methods..."
+          
+          # Essayer différentes méthodes
+          echo "1. Testing with http://..."
+          curl -I --connect-timeout 10 "http://argocd.178.254.23.139.nip.io" || echo "HTTP failed"
+          
+          echo "2. Testing raw IP..."
+          curl -k -I --connect-timeout 10 "https://178.254.23.139" || echo "Raw IP failed"
+        fi
+
+    - name: Get Argo CD admin password
+      id: argocd-password
+      run: |
+        ARGOCD_PASSWORD=$(kubectl -n argocd get secret argocd-initial-admin-secret -o jsonpath="{.data.password}" | base64 -d)
+        echo "🔐 Password retrieved"
+        # Vérifier que le mot de passe n'est pas vide
+        if [[ -z "$ARGOCD_PASSWORD" ]]; then
+          echo "❌ Failed to retrieve Argo CD password"
+          exit 1
+        fi
+
+    - name: Login to Argo CD with different methods
+      continue-on-error: true
+      run: |
+        ARGOCD_URL="https://argocd.178.254.23.139.nip.io"
+        echo "🔐 Attempting to login to Argo CD..."
+        
+        # Méthode 1: URL complète avec grpc-web
+        echo "🔄 Method 1: Using gRPC web..."
+        if argocd login $ARGOCD_URL \
           --username admin \
           --password "$(kubectl -n argocd get secret argocd-initial-admin-secret -o jsonpath='{.data.password}' | base64 -d)" \
           --insecure \
-          --grpc-web
+          --grpc-web; then
+          echo "✅ Login successful with gRPC web"
+          exit 0
+        fi
+
+        # Méthode 2: Sans grpc-web
+        echo "🔄 Method 2: Without gRPC web..."
+        if argocd login $ARGOCD_URL \
+          --username admin \
+          --password "$(kubectl -n argocd get secret argocd-initial-admin-secret -o jsonpath='{.data.password}' | base64 -d)" \
+          --insecure; then
+          echo "✅ Login successful without gRPC web"
+          exit 0
+        fi
+
+        # Méthode 3: Utiliser le port 80 (HTTP)
+        echo "🔄 Method 3: Trying HTTP..."
+        if argocd login "http://argocd.178.254.23.139.nip.io" \
+          --username admin \
+          --password "$(kubectl -n argocd get secret argocd-initial-admin-secret -o jsonpath='{.data.password}' | base64 -d)" \
+          --insecure; then
+          echo "✅ Login successful with HTTP"
+          exit 0
+        fi
+
+        echo "❌ All login methods failed"
+        exit 1
+
+    - name: Alternative login method
+      if: steps.argocd-login.outcome == 'failure'
+      run: |
+        echo "🔄 Using alternative login method..."
         
-        echo "✅ Successfully logged in to Argo CD"
+        # Utiliser l'URL externe directement
+        ARGOCD_URL="https://argocd.178.254.23.139.nip.io"
+        
+        # Forcer la connexion avec timeout
+        timeout 30 argocd login $ARGOCD_URL \
+          --username admin \
+          --password "$(kubectl -n argocd get secret argocd-initial-admin-secret -o jsonpath='{.data.password}' | base64 -d)" \
+          --insecure \
+          --grpc-web || echo "⚠️ Login attempt completed"
 
     - name: Sync Argo CD application
       run: |
         APP_NAME="banking-app-${{ needs.determine-context.outputs.environment }}"
         echo "🔄 Syncing Argo CD application: $APP_NAME"
         
-        # Synchroniser l'application
-        argocd app sync $APP_NAME
-        
-        # Attendre que la synchronisation soit complète
-        echo "⏳ Waiting for sync to complete..."
-        argocd app wait $APP_NAME --health --timeout 600
-        
-        echo "✅ Argo CD sync completed for $APP_NAME"
+        # Vérifier que l'application existe
+        if argocd app get $APP_NAME; then
+          echo "✅ Application $APP_NAME found, starting sync..."
+          
+          # Synchroniser l'application
+          argocd app sync $APP_NAME
+          
+          # Attendre que la synchronisation soit complète
+          echo "⏳ Waiting for sync to complete..."
+          argocd app wait $APP_NAME --health --timeout 600
+          
+          echo "✅ Argo CD sync completed for $APP_NAME"
+        else
+          echo "❌ Application $APP_NAME not found in Argo CD"
+          echo "💡 Please create the application first using: kubectl apply -f scripts/create-argocd-apps.sh"
+          exit 1
+        fi
 
     - name: Display application status
       run: |
         APP_NAME="banking-app-${{ needs.determine-context.outputs.environment }}"
         echo "📊 Final status for $APP_NAME:"
-        argocd app get $APP_NAME
-
+        argocd app get $APP_NAME || echo "⚠️ Cannot get application status"
+  
   verification:
     needs: [determine-context, update-gitops-manifests, argocd-sync]
     runs-on: ubuntu-latest

@@ -127,7 +127,7 @@ jobs:
 
   argocd-sync:
     needs: [determine-context, update-gitops-manifests]
-    if: needs.determine-context.outputs.environment == 'production'
+    if: (needs.determine-context.outputs.environment == 'production' || needs.determine-context.outputs.environment == 'staging') && success()
     runs-on: ubuntu-latest
     environment: production
     steps:
@@ -143,12 +143,37 @@ jobs:
         echo "${{ secrets.K8S_PROD_CONFIG }}" | base64 -d > $HOME/.kube/config
         chmod 600 $HOME/.kube/config
 
+    - name: Login to Argo CD
+      run: |
+        ARGOCD_SERVER="argocd-server.argocd.svc.cluster.local"
+        ARGOCD_PASSWORD=$(kubectl -n argocd get secret argocd-initial-admin-secret -o jsonpath="{.data.password}" | base64 -d)
+        
+        argocd login $ARGOCD_SERVER \
+          --username admin \
+          --password $ARGOCD_PASSWORD \
+          --insecure \
+          --grpc-web
+        
+        echo "✅ Logged in to Argo CD"
+
     - name: Sync Argo CD application
       run: |
         APP_NAME="banking-app-${{ needs.determine-context.outputs.environment }}"
         echo "🔄 Syncing Argo CD application: $APP_NAME"
-        # argocd app sync $APP_NAME
-        echo "✅ Argo CD sync completed (simulated)"
+        
+        # Sync l'application
+        argocd app sync $APP_NAME
+        
+        # Attendre que la sync soit complète
+        argocd app wait $APP_NAME --health --timeout 300
+        
+        echo "✅ Argo CD sync completed for $APP_NAME"
+
+    - name: Get application status
+      run: |
+        APP_NAME="banking-app-${{ needs.determine-context.outputs.environment }}"
+        echo "📊 Application status:"
+        argocd app get $APP_NAME
 
   verification:
     needs: [determine-context, update-gitops-manifests]
@@ -189,3 +214,25 @@ jobs:
       run: |
         echo "🔔 Simulating notification..."
         echo "Deployment ${{ needs.verification.result }} for ${{ needs.determine-context.outputs.environment }}"
+    
+  debug-all-outputs:
+    needs: [determine-context, build-and-test, update-gitops-manifests]
+    runs-on: ubuntu-latest
+    if: always()
+    steps:
+    - name: Show all outputs
+      run: |
+        echo "🎯 DETERMINE-CONTEXT OUTPUTS:"
+        echo "  environment: '${{ needs.determine-context.outputs.environment }}'"
+        echo "  image-tag: '${{ needs.determine-context.outputs.image-tag }}'"
+        
+        echo ""
+        echo "🔍 ARGO-CD-SYNC CONDITION:"
+        echo "  environment == 'production': ${{ needs.determine-context.outputs.environment == 'production' }}"
+        echo "  Condition result: ${{ needs.determine-context.outputs.environment == 'production' && true }}"
+        
+        echo ""
+        echo "📊 JOB STATUS:"
+        echo "  determine-context: ${{ job.status }}"
+        echo "  build-and-test: ${{ needs.build-and-test.result }}"
+        echo "  update-gitops-manifests: ${{ needs.update-gitops-manifests.result }}"

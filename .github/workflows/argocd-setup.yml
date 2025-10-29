@@ -1,0 +1,36 @@
+name: Argo CD Initial Setup
+
+on:
+  workflow_dispatch:  # Manuel seulement
+
+jobs:
+  setup-argocd:
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Configure Kubernetes
+      run: |
+        mkdir -p $HOME/.kube
+        echo "${{ secrets.K8S_PROD_CONFIG }}" | base64 -d > $HOME/.kube/config
+        chmod 600 $HOME/.kube/config
+
+    - name: Create Argo CD applications
+      run: |
+        chmod +x scripts/create-argocd-apps.sh
+        ./scripts/create-argocd-apps.sh
+
+    - name: Verify applications
+      run: |
+        echo "🔍 Verifying Argo CD applications..."
+        kubectl get applications -n argocd
+        
+        echo ""
+        echo "🎯 Application details:"
+        for app in banking-app-dev banking-app-staging banking-app-prod; do
+          echo "=== $app ==="
+          kubectl get application $app -n argocd -o jsonpath='{.status.sync.status}/{.status.health.status}' || echo "Not found"
+          echo ""
+        done

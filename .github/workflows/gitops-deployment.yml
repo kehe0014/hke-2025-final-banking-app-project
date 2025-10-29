@@ -7,25 +7,28 @@ on:
     types: [ published ]
   pull_request:
     branches: [ main ]
-
-vars:
+    
+env:
   REGISTRY: docker.io
   IMAGE_NAME: tdksoft341/tdk-banking-app
-  GITOPS_PATH: gitops
+  GITOPS_PATH: gitops # Path to GitOps manifests in the repository
 
 jobs:
   build-and-test:
     uses: ./.github/workflows/_templates/build-and-test.yml
     with:
-      registry: ${{ vars.REGISTRY }}
-      image_name: ${{ vars.IMAGE_NAME }}
+      # Utilisation de env.REGISTRY (qui fonctionne au sein des jobs)
+      registry: ${{ env.REGISTRY }}
+      # Utilisation de env.IMAGE_NAME
+      image_name: ${{ env.IMAGE_NAME }}
     secrets: inherit
 
   update-gitops-manifests:
     needs: build-and-test
     uses: ./.github/workflows/_templates/update-gitops.yml
     with:
-      gitops_path: ${{ vars.GITOPS_PATH }}
+      # Utilisation de env.GITOPS_PATH
+      gitops_path: ${{ env.GITOPS_PATH }}
       environment: ${{ needs.build-and-test.outputs.environment }}
       image_tag: ${{ needs.build-and-test.outputs.image-tag }}
     secrets: inherit

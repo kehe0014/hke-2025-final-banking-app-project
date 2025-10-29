@@ -4,44 +4,91 @@ metadata:
   name: banking-app
   namespace: banking-app-prod
   labels:
-    app: banking-app
+    app.kubernetes.io/name: banking-app # 💡 Nouvelle recommandation K8s
+    app.kubernetes.io/instance: banking-app-prod-instance
+    app.kubernetes.io/version: v1.0.0
     environment: production
 spec:
+  # Meilleure stratégie de mise à jour pour la Production
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 25% # Mettre à l'échelle jusqu'à 25% plus de Pods pendant la mise à jour
+      maxUnavailable: 0 # Ne jamais mettre à zéro le nombre de Pods disponibles
+  
   replicas: 3
   selector:
     matchLabels:
-      app: banking-app
+      app: banking-app # ⚠️ Conserver ce label pour la rétrocompatibilité du Service
   template:
     metadata:
       labels:
         app: banking-app
         environment: production
+        app.kubernetes.io/name: banking-app # 💡 Ajout des labels recommandés K8s
+        app.kubernetes.io/version: v1.0.0
     spec:
       containers:
-      - name: banking-app
-        image: tdksoft341/tdk-banking-app:v1.0.0  # Sera remplacé par le workflow
-        imagePullPolicy: Always
+      - name: banking-app # Le nom du conteneur est identique au nom de l'application (bonne pratique)
+        image: tdksoft341/tdk-banking-app:v1.0.0 # 💡 Pensez à externaliser ce tag via CI/CD ou Helm
+        imagePullPolicy: IfNotPresent # Changé pour éviter de toujours tirer l'image
         ports:
-        - containerPort: 8000
+        - name: http-app
+          containerPort: 8000
+        
+        # --- 🟢 VÉRIFICATIONS DE SANTÉ CRUCIALES POUR LA PROD ---
+        livenessProbe:
+          httpGet:
+            path: /health # 💡 Supposons une route de vérification de l'état de l'application
+            port: 8000
+          initialDelaySeconds: 30 # Temps d'attente initial (pour le démarrage)
+          periodSeconds: 10
+          failureThreshold: 3
+
+        readinessProbe:
+          httpGet:
+            path: /ready # 💡 Supposons une route de vérification de la préparation du service
+            port: 8000
+          initialDelaySeconds: 5
+          periodSeconds: 5
+          failureThreshold: 3
+        # --------------------------------------------------------
+
         env:
-        - name: DEBUG
-          value: "False"
-        - name: SECRET_KEY
-          valueFrom:
-            secretKeyRef:
-              name: banking-app-secrets
-              key: SECRET_KEY
-        - name: DATABASE_URL
-          valueFrom:
-            secretKeyRef:
-              name: banking-app-secrets
-              key: DATABASE_URL
-        - name: ALLOWED_HOSTS
-          value: "banking.votredomaine.com,localhost,127.0.0.1,.votredomaine.com"
-        - name: CELERY_BROKER_URL
-          value: "redis://redis-service:6379/0"
-        - name: CELERY_RESULT_BACKEND
-          value: "redis://redis-service:6379/0"
+          # Bonnes pratiques : utiliser ConfigMap pour les valeurs non sensibles (DEBUG, HOSTS)
+          - name: DEBUG
+            value: "False"
+          - name: ALLOWED_HOSTS
+            value: "banking.votredomaine.com,localhost,127.0.0.1,.votredomaine.com"
+          - name: CELERY_BROKER_URL
+            value: "redis://redis-service:6379/0"
+          - name: CELERY_RESULT_BACKEND
+            value: "redis://redis-service:6379/0"
+          
+          # Bonne pratique : Conserver les secrets dans le Secret (SECRET_KEY, DATABASE_URL)
+          - name: SECRET_KEY
+            valueFrom:
+              secretKeyRef:
+                name: banking-app-secrets
+                key: SECRET_KEY
+          - name: DATABASE_URL
+            valueFrom:
+              secretKeyRef:
+                name: banking-app-secrets
+                key: DATABASE_URL
+        
+        # --- 🛠️ BONNE PRATIQUE : SÉPARER L'INITIALISATION DE L'EXÉCUTION ---
+        # Le champ 'command' est supprimé, car le binaire gunicorn devrait être l'ENTRYPOINT
+        # du Dockerfile pour la commande principale.
+        
+        # Pour le manage.py migrate/collectstatic, il est préférable d'utiliser un 'initContainer'
+        # ou un mécanisme de gestion de version de base de données (comme Helm Hooks).
+        
+        # 💡 Pour simplifier, nous utilisons le point d'entrée par défaut du Dockerfile.
+        # Si le ENTRYPOINT/CMD par défaut du Dockerfile lance l'application, retirez command/args.
+        # Si vous devez lancer Gunicorn, utilisez l'approche ci-dessous :
+        args: ["gunicorn", "bankingsystem.wsgi:application", "--bind", "0.0.0.0:8000"]
+        
         resources:
           requests:
             memory: "256Mi"
@@ -49,6 +96,3 @@ spec:
           limits:
             memory: "512Mi"
             cpu: "500m"
-        # Health checks désactivés pour l'instant
-        command: ["/bin/sh"]
-        args: ["-c", "python manage.py migrate && python manage.py collectstatic --noinput && gunicorn bankingsystem.wsgi:application --bind 0.0.0.0:8000"]

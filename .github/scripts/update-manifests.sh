@@ -6,11 +6,28 @@ ENVIRONMENT="$1"
 IMAGE_TAG="$2"
 GITOPS_PATH="$3"
 
+# Validation des paramètres
+if [[ -z "$ENVIRONMENT" ]]; then
+    echo "❌ ERROR: Environment parameter is empty"
+    exit 1
+fi
+
+if [[ -z "$IMAGE_TAG" ]]; then
+    echo "❌ ERROR: Image tag parameter is empty"
+    exit 1
+fi
+
+if [[ -z "$GITOPS_PATH" ]]; then
+    echo "❌ ERROR: GitOps path parameter is empty"
+    exit 1
+fi
+
 echo "🔄 Starting manifest update..."
 echo "Environment: $ENVIRONMENT"
 echo "Image Tag: $IMAGE_TAG" 
 echo "GitOps Path: $GITOPS_PATH"
 
+# CHEMIN CORRIGÉ : ajouter le sous-répertoire d'environnement
 MANIFEST_PATH="${GITOPS_PATH}/overlays/${ENVIRONMENT}"
 
 echo "Target manifest path: $MANIFEST_PATH"
@@ -18,7 +35,6 @@ echo "Target manifest path: $MANIFEST_PATH"
 # Vérifier que le chemin existe
 if [[ ! -d "${MANIFEST_PATH}" ]]; then
     echo "❌ Manifest path not found: ${MANIFEST_PATH}"
-    echo "📁 Current directory: $(pwd)"
     echo "📁 Available overlays:"
     ls -la "${GITOPS_PATH}/overlays/" || echo "Overlays directory not found"
     exit 1

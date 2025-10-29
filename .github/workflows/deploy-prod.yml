@@ -106,18 +106,23 @@ jobs:
     - name: Deploy Application Stack
       run: |
         echo "🚀 Déploiement de l'application..."
-        
-        # Créer le namespace
         kubectl create namespace ${{ env.K8S_NAMESPACE }} --dry-run=client -o yaml | kubectl apply -f -
-        
-        # Déployer Redis
-        # kubectl apply -f k8s/redis-deployment-prod.yaml -n ${{ env.K8S_NAMESPACE }}
-        
-        # Déployer l'application
+        kubectl apply -f k8s/redis-deployment-prod.yaml -n ${{ env.K8S_NAMESPACE }}
         kubectl apply -f k8s/service-prod.yaml -n ${{ env.K8S_NAMESPACE }}
         
-        # Mettre à jour l'image
-        kubectl set image deployment/banking-app banking-app=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ needs.build.outputs.image-tag }} -n ${{ env.K8S_NAMESPACE }}
+        # Détection depuis le fichier YAML (plus fiable)
+        echo "🔍 Lecture du nom du container depuis le fichier YAML..."
+        CONTAINER_NAME=$(grep -A5 "containers:" k8s/service-prod.yaml | grep "name:" | head -1 | awk '{print $2}')
+        
+        if [ -z "$CONTAINER_NAME" ]; then
+          # Fallback: détection depuis le cluster
+          CONTAINER_NAME=$(kubectl get deployment banking-app -n ${{ env.K8S_NAMESPACE }} -o jsonpath='{.spec.template.spec.containers[0].name}')
+          echo "📦 Container détecté depuis le cluster: $CONTAINER_NAME"
+        else
+          echo "📦 Container détecté depuis le fichier YAML: $CONTAINER_NAME"
+        fi
+        
+        kubectl set image deployment/banking-app $CONTAINER_NAME=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ needs.build.outputs.image-tag }} -n ${{ env.K8S_NAMESPACE }}
 
     - name: Wait for rollout
       run: |

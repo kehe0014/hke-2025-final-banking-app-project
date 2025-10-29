@@ -111,7 +111,7 @@ jobs:
         kubectl apply -f k8s/service-prod.yaml -n ${{ env.K8S_NAMESPACE }}
         
         # Mettre à jour l'image du déploiement avec la nouvelle image
-        kubectl set image deployment/banking-app tdk-banking-app=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ needs.build.outputs.image-tag }} -n ${{ env.K8S_NAMESPACE }}
+        # kubectl set image deployment/banking-app tdk-banking-app=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ needs.build.outputs.image-tag }} -n ${{ env.K8S_NAMESPACE }}
     
     - name: Wait for rollout
       run: |

@@ -1,0 +1,66 @@
+name: Build and Test
+
+on:
+  workflow_call:
+    inputs:
+      registry:
+        required: true
+        type: string
+      image_name:
+        required: true
+        type: string
+
+outputs:
+  image-tag:
+    description: "Generated image tag"
+    value: ${{ steps.tag.outputs.tag }}
+  environment:
+    description: "Target environment"
+    value: ${{ steps.env.outputs.environment }}
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+    outputs:
+      image-tag: ${{ steps.tag.outputs.tag }}
+      environment: ${{ steps.env.outputs.environment }}
+
+    steps:
+    - name: Checkout application code
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+
+    - name: Determine environment
+      id: env
+      run: |
+        if [[ "${{ github.ref }}" == "refs/heads/main" ]]; then
+          echo "environment=production" >> $GITHUB_OUTPUT
+        elif [[ "${{ github.ref }}" == "refs/heads/develop" ]]; then
+          echo "environment=staging" >> $GITHUB_OUTPUT
+        else
+          echo "environment=development" >> $GITHUB_OUTPUT
+        fi
+        echo "Target environment: $(cat $GITHUB_OUTPUT | grep environment | cut -d'=' -f2)"
+
+    - name: Generate image tag
+      id: tag
+      run: |
+        chmod +x .github/scripts/generate-tag.sh
+        ./.github/scripts/generate-tag.sh
+        echo "Generated tag: ${{ steps.tag.outputs.tag }}"
+
+    - name: Build and push Docker image
+      uses: ./.github/actions/docker-build
+      with:
+        registry: ${{ inputs.registry }}
+        image_name: ${{ inputs.image_name }}
+        image_tag: ${{ steps.tag.outputs.tag }}
+        dockerhub_username: ${{ secrets.DOCKERHUB_USERNAME }}
+        dockerhub_token: ${{ secrets.DOCKERHUB_TOKEN }}
+
+    #- name: Run application tests
+      #run: |
+        #echo "🧪 Running application tests..."
+        # docker run --rm ${{ inputs.registry }}/${{ inputs.image_name }}:${{ steps.tag.outputs.tag }} python manage.py test
+        #echo "✅ Tests completed (placeholder)"

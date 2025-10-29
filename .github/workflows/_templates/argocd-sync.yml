@@ -1,0 +1,50 @@
+name: Argo CD Sync
+
+on:
+  workflow_call:
+    inputs:
+      environment:
+        required: true
+        type: string
+
+jobs:
+  argocd-sync:
+    runs-on: ubuntu-latest
+    environment: production
+
+    steps:
+    - name: Install Argo CD CLI
+      run: |
+        curl -sSL -o argocd-linux-amd64 https://github.com/argoproj/argo-cd/releases/latest/download/argocd-linux-amd64
+        sudo install -m 555 argocd-linux-amd64 /usr/local/bin/argocd
+        rm argocd-linux-amd64
+
+    - name: Configure Kubernetes
+      run: |
+        mkdir -p $HOME/.kube
+        echo "${{ secrets.K8S_PROD_CONFIG }}" | base64 -d > $HOME/.kube/config
+        chmod 600 $HOME/.kube/config
+
+    - name: Login to Argo CD
+      run: |
+        ARGOCD_SERVER=$(kubectl get svc argocd-server -n argocd -o jsonpath='{.status.loadBalancer.ingress[0].ip}' || echo "argocd-server.argocd")
+        ARGOCD_PASSWORD=$(kubectl -n argocd get secret argocd-initial-admin-secret -o jsonpath="{.data.password}" | base64 -d)
+        
+        argocd login $ARGOCD_SERVER --username admin --password $ARGOCD_PASSWORD --insecure
+        
+        echo "✅ Logged in to Argo CD"
+
+    - name: Sync Argo CD application
+      run: |
+        APP_NAME="banking-app-${{ inputs.environment }}"
+        argocd app sync $APP_NAME
+        echo "✅ Argo CD sync triggered for $APP_NAME"
+
+    - name: Wait for sync completion
+      run: |
+        APP_NAME="banking-app-${{ inputs.environment }}"
+        timeout 300 bash -c 'while [[ $(argocd app get $APP_NAME -o json | jq -r ".status.sync.status") != "Synced" ]]; do
+          echo "⏳ Waiting for sync to complete..."
+          sleep 10
+        done'
+        echo "✅ Argo CD sync completed for $APP_NAME"

@@ -1,0 +1,61 @@
+name: Update GitOps Manifests
+
+on:
+  workflow_call:
+    inputs:
+      gitops_path:
+        required: true
+        type: string
+      environment:
+        required: true
+        type: string
+      image_tag:
+        required: true
+        type: string
+
+jobs:
+  update-gitops:
+    runs-on: ubuntu-latest
+    environment: ${{ inputs.environment }}
+
+    steps:
+    - name: Checkout current repository
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+        token: ${{ secrets.GITHUB_TOKEN }}
+
+    - name: Configure Git
+      run: |
+        git config user.name "GitHub Actions"
+        git config user.email "actions@github.com"
+
+    - name: Verify GitOps directory exists
+      run: |
+        echo "📁 Checking GitOps directory structure..."
+        if [ -d "${{ inputs.gitops_path }}" ]; then
+          echo "✅ GitOps directory exists: ${{ inputs.gitops_path }}"
+          find "${{ inputs.gitops_path }}" -name "*.yaml" -o -name "*.yml" | sort
+        else
+          echo "❌ GitOps directory not found: ${{ inputs.gitops_path }}"
+          echo "📂 Current directory structure:"
+          find . -maxdepth 3 -type d | sort
+          exit 1
+        fi
+
+    - name: Update manifests with new image tag
+      run: |
+        chmod +x .github/scripts/update-manifests.sh
+        ./.github/scripts/update-manifests.sh "${{ inputs.environment }}" "${{ inputs.image_tag }}" "${{ inputs.gitops_path }}"
+
+    - name: Commit and push changes
+      run: |
+        # Vérifier s'il y a des changements
+        if git diff --quiet; then
+          echo "🤷 No changes to commit"
+        else
+          git add .
+          git commit -m "chore: update ${{ inputs.environment }} to image ${{ inputs.image_tag }} [skip ci]"
+          git push origin ${{ github.ref }}
+          echo "✅ GitOps manifests updated and pushed"
+        fi

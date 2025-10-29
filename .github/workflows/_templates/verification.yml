@@ -1,0 +1,51 @@
+name: Deployment Verification
+
+on:
+  workflow_call:
+    inputs:
+      environment:
+        required: true
+        type: string
+      image_tag:
+        required: true
+        type: string
+
+jobs:
+  verification:
+    runs-on: ubuntu-latest
+    environment: ${{ inputs.environment }}
+
+    steps:
+    - name: Configure Kubernetes
+      run: |
+        mkdir -p $HOME/.kube
+        if [[ "${{ inputs.environment }}" == "production" ]]; then
+          echo "${{ secrets.K8S_PROD_CONFIG }}" | base64 -d > $HOME/.kube/config
+        else
+          echo "${{ secrets.K8S_STAGING_CONFIG }}" | base64 -d > $HOME/.kube/config
+        fi
+        chmod 600 $HOME/.kube/config
+
+    - name: Wait for deployment
+      run: |
+        if [[ "${{ inputs.environment }}" == "production" ]]; then
+          NAMESPACE="banking-app-prod"
+        elif [[ "${{ inputs.environment }}" == "staging" ]]; then
+          NAMESPACE="banking-app-staging"
+        else
+          NAMESPACE="banking-app-dev"
+        fi
+        
+        kubectl rollout status deployment/banking-app -n $NAMESPACE --timeout=600s
+        echo "✅ Deployment successful in $NAMESPACE"
+
+    - name: Run health checks
+      run: |
+        chmod +x .github/scripts/health-check.sh
+        ./.github/scripts/health-check.sh "${{ inputs.environment }}"
+
+    - name: Verify deployment status
+      uses: ./.github/actions/k8s-verify
+      with:
+        environment: ${{ inputs.environment }}
+        namespace: banking-app-${{ inputs.environment }}

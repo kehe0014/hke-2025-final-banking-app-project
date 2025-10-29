@@ -1,0 +1,88 @@
+name: Deployment Notification
+
+on:
+  workflow_call:
+    inputs:
+      environment:
+        required: true
+        type: string
+      image_tag:
+        required: true
+        type: string
+      status:
+        required: true
+        type: string
+
+jobs:
+  notify:
+    runs-on: ubuntu-latest
+    if: always()
+
+    steps:
+    - name: Send Slack notification
+      if: always()
+      uses: slackapi/slack-github-action@v1.24.0
+      with:
+        payload: |
+          {
+            "text": "Deployment ${{ inputs.status }} for ${{ inputs.environment }}",
+            "blocks": [
+              {
+                "type": "section",
+                "text": {
+                  "type": "mrkdwn",
+                  "text": "*Deployment ${{ inputs.status }}* 🚀"
+                }
+              },
+              {
+                "type": "section",
+                "fields": [
+                  {
+                    "type": "mrkdwn",
+                    "text": "*Environment:*\n${{ inputs.environment }}"
+                  },
+                  {
+                    "type": "mrkdwn",
+                    "text": "*Image Tag:*\n${{ inputs.image_tag }}"
+                  },
+                  {
+                    "type": "mrkdwn",
+                    "text": "*Status:*\n${{ inputs.status }}"
+                  },
+                  {
+                    "type": "mrkdwn",
+                    "text": "*Repository:*\n${{ github.repository }}"
+                  }
+                ]
+              }
+            ]
+          }
+      env:
+        SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+
+    - name: Create GitHub comment
+      if: always()
+      uses: actions/github-script@v6
+      with:
+        script: |
+          const status = '${{ inputs.status }}';
+          const environment = '${{ inputs.environment }}';
+          const imageTag = '${{ inputs.image_tag }}';
+          
+          let message = '';
+          let icon = '';
+          
+          if (status === 'success') {
+            icon = '🎉';
+            message = `**GitOps Deployment Successful!** ${icon}\n\n• Environment: ${environment}\n• Image: ${imageTag}\n• Status: ✅ Deployed and verified\n• Argo CD: Auto-synced from Git`;
+          } else {
+            icon = '❌';
+            message = `**GitOps Deployment Failed!** ${icon}\n\n• Environment: ${environment}\n• Image: ${imageTag}\n• Status: ❌ Deployment failed\n\nPlease check the workflow logs for details.`;
+          }
+          
+          github.rest.issues.createComment({
+            issue_number: context.issue.number,
+            owner: context.repo.owner,
+            repo: context.repo.repo,
+            body: message
+          });

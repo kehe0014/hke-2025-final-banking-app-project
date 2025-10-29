@@ -1,0 +1,28 @@
+name: 'Determine Environment'
+description: 'Determine target environment based on branch'
+
+inputs:
+  github_ref:
+    description: 'GitHub ref'
+    required: true
+
+outputs:
+  environment:
+    description: 'Target environment'
+    value: ${{ steps.env.outputs.environment }}
+
+runs:
+  using: "composite"
+  steps:
+    - name: Determine environment
+      id: env
+      shell: bash
+      run: |
+        if [[ "${{ inputs.github_ref }}" == "refs/heads/main" ]]; then
+          echo "environment=production" >> $GITHUB_OUTPUT
+        elif [[ "${{ inputs.github_ref }}" == "refs/heads/develop" ]]; then
+          echo "environment=staging" >> $GITHUB_OUTPUT
+        else
+          echo "environment=development" >> $GITHUB_OUTPUT
+        fi
+        echo "Target environment: $(cat $GITHUB_OUTPUT | grep environment | cut -d'=' -f2)"

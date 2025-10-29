@@ -92,14 +92,8 @@ jobs:
       uses: actions/checkout@v4
       with:
         fetch-depth: 0
-        token: ${{ secrets.GITHUB_TOKEN }}
-
-    - name: Debug update inputs
-      run: |
-        echo "🎯 UPDATE PARAMETERS:"
-        echo "Environment: ${{ needs.determine-context.outputs.environment }}"
-        echo "Image Tag: ${{ needs.determine-context.outputs.image-tag }}"
-        echo "GitOps Path: ${{ env.GITOPS_PATH }}"
+        # 🔑 Utiliser le PAT au lieu de GITHUB_TOKEN
+        token: ${{ secrets.WORKFLOW_TOKEN }}
 
     - name: Configure Git
       run: |
@@ -126,7 +120,8 @@ jobs:
           echo "💾 Committing changes..."
           git add .
           git commit -m "chore: update ${{ needs.determine-context.outputs.environment }} to image ${{ needs.determine-context.outputs.image-tag }} [skip ci]"
-          git push origin ${{ github.ref }}
+          # 🔑 Utiliser le PAT pour le push
+          git push https://${{ secrets.WORKFLOW_TOKEN }}@github.com/${{ github.repository }}.git HEAD:${{ github.ref }}
           echo "✅ GitOps manifests updated and pushed"
         fi
 

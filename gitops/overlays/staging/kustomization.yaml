@@ -19,6 +19,6 @@ commonLabels:
 
 images:
   - name: tdksoft341/tdk-banking-app
-    newTag: "v1.0.0"
+    newTag: "develop-d4dee0a5"
   - name: redis
-    newTag: "7-alpine"
+    newTag: "develop-d4dee0a5"

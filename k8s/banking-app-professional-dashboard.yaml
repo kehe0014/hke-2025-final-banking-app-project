@@ -1,0 +1,344 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: grafana-banking-app-dashboard
+  namespace: monitoring
+  labels:
+    grafana_dashboard: "1"
+data:
+  banking-app-professional-dashboard.json: |-
+    {
+      "dashboard": {
+        "id": null,
+        "uid": "banking-app-professional",
+        "title": "🏦 Banking App - Production Dashboard",
+        "tags": ["banking", "production", "financial"],
+        "timezone": "browser",
+        "refresh": "10s",
+        "time": {
+          "from": "now-1h",
+          "to": "now"
+        },
+        "panels": [
+          {
+            "id": 1,
+            "title": "Application Health Status",
+            "type": "stat",
+            "description": "Current status of banking application pods",
+            "gridPos": {"h": 8, "w": 6, "x": 0, "y": 0},
+            "targets": [
+              {
+                "expr": "sum(up{namespace=\"banking-app-prod\"})",
+                "legendFormat": "Running Pods",
+                "instant": true
+              }
+            ],
+            "fieldConfig": {
+              "defaults": {
+                "color": {"mode": "thresholds"},
+                "thresholds": {
+                  "steps": [
+                    {"color": "red", "value": 0},
+                    {"color": "yellow", "value": 1},
+                    {"color": "green", "value": 2}
+                  ]
+                },
+                "unit": "none",
+                "min": 0
+              }
+            }
+          },
+          {
+            "id": 2,
+            "title": "CPU Usage (%)",
+            "type": "gauge",
+            "description": "CPU utilization across all banking app pods",
+            "gridPos": {"h": 8, "w": 6, "x": 6, "y": 0},
+            "targets": [
+              {
+                "expr": "avg(rate(container_cpu_usage_seconds_total{namespace=\"banking-app-prod\", container!=\"POD\"}[5m])) * 100",
+                "legendFormat": "Avg CPU",
+                "instant": true
+              }
+            ],
+            "fieldConfig": {
+              "defaults": {
+                "color": {"mode": "thresholds"},
+                "thresholds": {
+                  "steps": [
+                    {"color": "green", "value": 0},
+                    {"color": "yellow", "value": 70},
+                    {"color": "red", "value": 85}
+                  ]
+                },
+                "unit": "percent",
+                "min": 0,
+                "max": 100
+              }
+            }
+          },
+          {
+            "id": 3,
+            "title": "Memory Usage",
+            "type": "gauge",
+            "description": "Memory utilization across all banking app pods",
+            "gridPos": {"h": 8, "w": 6, "x": 12, "y": 0},
+            "targets": [
+              {
+                "expr": "avg(container_memory_usage_bytes{namespace=\"banking-app-prod\", container!=\"POD\"}) / 1024 / 1024",
+                "legendFormat": "Avg Memory",
+                "instant": true
+              }
+            ],
+            "fieldConfig": {
+              "defaults": {
+                "color": {"mode": "thresholds"},
+                "thresholds": {
+                  "steps": [
+                    {"color": "green", "value": 0},
+                    {"color": "yellow", "value": 512},
+                    {"color": "red", "value": 768}
+                  ]
+                },
+                "unit": "MB",
+                "min": 0
+              }
+            }
+          },
+          {
+            "id": 4,
+            "title": "HTTP Request Rate",
+            "type": "stat",
+            "description": "Requests per second",
+            "gridPos": {"h": 8, "w": 6, "x": 18, "y": 0},
+            "targets": [
+              {
+                "expr": "sum(rate(http_requests_total{namespace=\"banking-app-prod\"}[5m]))",
+                "legendFormat": "Req/s",
+                "instant": true
+              }
+            ],
+            "fieldConfig": {
+              "defaults": {
+                "unit": "reqps",
+                "min": 0,
+                "color": {"mode": "palette-classic"}
+              }
+            }
+          },
+          {
+            "id": 5,
+            "title": "CPU Usage Over Time",
+            "type": "timeseries",
+            "description": "CPU usage trends for banking application",
+            "gridPos": {"h": 8, "w": 12, "x": 0, "y": 8},
+            "targets": [
+              {
+                "expr": "rate(container_cpu_usage_seconds_total{namespace=\"banking-app-prod\", container!=\"POD\"}[5m]) * 100",
+                "legendFormat": "{{pod}}"
+              }
+            ],
+            "fieldConfig": {
+              "defaults": {
+                "unit": "percent",
+                "min": 0,
+                "color": {"mode": "palette-classic"}
+              }
+            }
+          },
+          {
+            "id": 6,
+            "title": "Memory Usage Over Time",
+            "type": "timeseries",
+            "description": "Memory consumption trends",
+            "gridPos": {"h": 8, "w": 12, "x": 12, "y": 8},
+            "targets": [
+              {
+                "expr": "container_memory_usage_bytes{namespace=\"banking-app-prod\", container!=\"POD\"} / 1024 / 1024",
+                "legendFormat": "{{pod}}"
+              }
+            ],
+            "fieldConfig": {
+              "defaults": {
+                "unit": "MB",
+                "min": 0,
+                "color": {"mode": "palette-classic"}
+              }
+            }
+          },
+          {
+            "id": 7,
+            "title": "HTTP Requests - Status Codes",
+            "type": "timeseries",
+            "description": "HTTP response status code distribution",
+            "gridPos": {"h": 8, "w": 12, "x": 0, "y": 16},
+            "targets": [
+              {
+                "expr": "rate(http_requests_total{status=~\"2..\", namespace=\"banking-app-prod\"}[5m])",
+                "legendFormat": "2xx Success"
+              },
+              {
+                "expr": "rate(http_requests_total{status=~\"4..\", namespace=\"banking-app-prod\"}[5m])",
+                "legendFormat": "4xx Client Errors"
+              },
+              {
+                "expr": "rate(http_requests_total{status=~\"5..\", namespace=\"banking-app-prod\"}[5m])",
+                "legendFormat": "5xx Server Errors"
+              }
+            ],
+            "fieldConfig": {
+              "defaults": {
+                "unit": "reqps",
+                "min": 0
+              }
+            }
+          },
+          {
+            "id": 8,
+            "title": "Response Time Percentiles",
+            "type": "timeseries",
+            "description": "HTTP response time distribution",
+            "gridPos": {"h": 8, "w": 12, "x": 12, "y": 16},
+            "targets": [
+              {
+                "expr": "histogram_quantile(0.50, rate(http_request_duration_seconds_bucket{namespace=\"banking-app-prod\"}[5m]))",
+                "legendFormat": "p50"
+              },
+              {
+                "expr": "histogram_quantile(0.95, rate(http_request_duration_seconds_bucket{namespace=\"banking-app-prod\"}[5m]))",
+                "legendFormat": "p95"
+              },
+              {
+                "expr": "histogram_quantile(0.99, rate(http_request_duration_seconds_bucket{namespace=\"banking-app-prod\"}[5m]))",
+                "legendFormat": "p99"
+              }
+            ],
+            "fieldConfig": {
+              "defaults": {
+                "unit": "s",
+                "min": 0,
+                "decimals": 3
+              }
+            }
+          },
+          {
+            "id": 9,
+            "title": "Container Restarts",
+            "type": "timeseries",
+            "description": "Number of container restarts",
+            "gridPos": {"h": 8, "w": 12, "x": 0, "y": 24},
+            "targets": [
+              {
+                "expr": "rate(container_last_seen{namespace=\"banking-app-prod\"}[5m])",
+                "legendFormat": "{{pod}}",
+                "hide": true
+              },
+              {
+                "expr": "kube_pod_container_status_restarts_total{namespace=\"banking-app-prod\"}",
+                "legendFormat": "{{pod}}"
+              }
+            ],
+            "fieldConfig": {
+              "defaults": {
+                "unit": "none",
+                "min": 0,
+                "color": {"mode": "palette-classic"}
+              }
+            }
+          },
+          {
+            "id": 10,
+            "title": "Network I/O",
+            "type": "timeseries",
+            "description": "Network input/output traffic",
+            "gridPos": {"h": 8, "w": 12, "x": 12, "y": 24},
+            "targets": [
+              {
+                "expr": "rate(container_network_receive_bytes_total{namespace=\"banking-app-prod\"}[5m])",
+                "legendFormat": "{{pod}} - Receive"
+              },
+              {
+                "expr": "rate(container_network_transmit_bytes_total{namespace=\"banking-app-prod\"}[5m])",
+                "legendFormat": "{{pod}} - Transmit"
+              }
+            ],
+            "fieldConfig": {
+              "defaults": {
+                "unit": "Bps",
+                "min": 0
+              }
+            }
+          },
+          {
+            "id": 11,
+            "title": "Disk I/O",
+            "type": "timeseries",
+            "description": "Disk read/write operations",
+            "gridPos": {"h": 8, "w": 12, "x": 0, "y": 32},
+            "targets": [
+              {
+                "expr": "rate(container_fs_reads_bytes_total{namespace=\"banking-app-prod\"}[5m])",
+                "legendFormat": "{{pod}} - Read"
+              },
+              {
+                "expr": "rate(container_fs_writes_bytes_total{namespace=\"banking-app-prod\"}[5m])",
+                "legendFormat": "{{pod}} - Write"
+              }
+            ],
+            "fieldConfig": {
+              "defaults": {
+                "unit": "Bps",
+                "min": 0
+              }
+            }
+          },
+          {
+            "id": 12,
+            "title": "JVM Memory (If Java App)",
+            "type": "timeseries",
+            "description": "JVM memory pools if Java application",
+            "gridPos": {"h": 8, "w": 12, "x": 12, "y": 32},
+            "targets": [
+              {
+                "expr": "jvm_memory_used_bytes{area=\"heap\", namespace=\"banking-app-prod\"} / 1024 / 1024",
+                "legendFormat": "{{pod}} - Heap Used"
+              },
+              {
+                "expr": "jvm_memory_max_bytes{area=\"heap\", namespace=\"banking-app-prod\"} / 1024 / 1024",
+                "legendFormat": "{{pod}} - Heap Max"
+              }
+            ],
+            "fieldConfig": {
+              "defaults": {
+                "unit": "MB",
+                "min": 0
+              }
+            }
+          }
+        ],
+        "templating": {
+          "list": [
+            {
+              "name": "namespace",
+              "type": "query",
+              "query": "label_values(namespace)",
+              "includeAll": true,
+              "multi": false,
+              "refresh": 1,
+              "current": {
+                "text": "banking-app-prod",
+                "value": "banking-app-prod"
+              }
+            },
+            {
+              "name": "pod",
+              "type": "query",
+              "query": "label_values(up{namespace=\"$namespace\"}, pod)",
+              "includeAll": true,
+              "multi": true,
+              "refresh": 2
+            }
+          ]
+        }
+      }
+    }

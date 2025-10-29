@@ -1,6 +1,6 @@
 #!/bin/bash
 
-set -e  # Exit on error
+set -e
 
 ENVIRONMENT="$1"
 IMAGE_TAG="$2"
@@ -23,7 +23,20 @@ if [[ -f "${MANIFEST_PATH}/kustomization.yaml" ]]; then
     cp "${MANIFEST_PATH}/kustomization.yaml" "${MANIFEST_PATH}/kustomization.yaml.backup"
     
     # Mettre à jour le tag pour l'image banking-app
-    sed -i "s|newTag:.*|newTag: \"${IMAGE_TAG}\"|g" "${MANIFEST_PATH}/kustomization.yaml"
+    if grep -q "tdksoft341/tdk-banking-app" "${MANIFEST_PATH}/kustomization.yaml"; then
+        sed -i "s|newTag:.*|newTag: \"${IMAGE_TAG}\"|g" "${MANIFEST_PATH}/kustomization.yaml"
+        echo "✅ Updated banking-app image tag to ${IMAGE_TAG}"
+    else
+        echo "⚠️  banking-app image not found in kustomization.yaml, adding it..."
+        # Ajouter la section images si elle n'existe pas
+        if ! grep -q "images:" "${MANIFEST_PATH}/kustomization.yaml"; then
+            echo "" >> "${MANIFEST_PATH}/kustomization.yaml"
+            echo "images:" >> "${MANIFEST_PATH}/kustomization.yaml"
+        fi
+        # Ajouter l'image
+        echo "- name: tdksoft341/tdk-banking-app" >> "${MANIFEST_PATH}/kustomization.yaml"
+        echo "  newTag: \"${IMAGE_TAG}\"" >> "${MANIFEST_PATH}/kustomization.yaml"
+    fi
     
     echo "✅ Updated kustomization.yaml in ${MANIFEST_PATH}"
 else

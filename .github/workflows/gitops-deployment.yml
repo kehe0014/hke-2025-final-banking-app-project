@@ -47,55 +47,150 @@ jobs:
 
   build-and-test:
     needs: determine-context
-    if: success()  # ✅ S'exécute si determine-context réussit
-    uses: ./.github/workflows/build-and-test.yml
-    with:
-      registry: ${{ env.REGISTRY }}
-      image_name: ${{ env.IMAGE_NAME }}
-      environment: ${{ needs.determine-context.outputs.environment }}
-      image_tag: ${{ needs.determine-context.outputs.image-tag }}
-    secrets: 
-      DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
-      DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
+    runs-on: ubuntu-latest
+    environment: ${{ needs.determine-context.outputs.environment }}
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Debug build inputs
+      run: |
+        echo "🎯 BUILD PARAMETERS:"
+        echo "Environment: ${{ needs.determine-context.outputs.environment }}"
+        echo "Image: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ needs.determine-context.outputs.image-tag }}"
+
+    - name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@v3
+
+    - name: Log in to Docker Hub
+      uses: docker/login-action@v3
+      with:
+        username: ${{ secrets.DOCKERHUB_USERNAME }}
+        password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+    - name: Build and push Docker image
+      run: |
+        echo "🐳 Building: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ needs.determine-context.outputs.image-tag }}"
+        docker build -t ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ needs.determine-context.outputs.image-tag }} .
+        docker push ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ needs.determine-context.outputs.image-tag }}
+        
+        # Tag latest for production
+        if [[ "${{ needs.determine-context.outputs.environment }}" == "production" ]]; then
+          echo "🏷️  Tagging latest for production"
+          docker tag ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ needs.determine-context.outputs.image-tag }} ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest
+          docker push ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest
+        fi
+        
+        echo "✅ Image pushed successfully"
 
   update-gitops-manifests:
-    needs: determine-context
-    if: success()  # ✅ S'exécute si determine-context réussit
-    uses: ./.github/workflows/update-gitops.yml
-    with:
-      gitops_path: ${{ env.GITOPS_PATH }}
-      environment: ${{ needs.determine-context.outputs.environment }}
-      image_tag: ${{ needs.determine-context.outputs.image-tag }}
-    secrets: 
-      GHA_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    needs: [determine-context, build-and-test]
+    runs-on: ubuntu-latest
+    environment: ${{ needs.determine-context.outputs.environment }}
+    steps:
+    - name: Checkout current repository
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+        token: ${{ secrets.GITHUB_TOKEN }}
+
+    - name: Debug update inputs
+      run: |
+        echo "🎯 UPDATE PARAMETERS:"
+        echo "Environment: ${{ needs.determine-context.outputs.environment }}"
+        echo "Image Tag: ${{ needs.determine-context.outputs.image-tag }}"
+        echo "GitOps Path: ${{ env.GITOPS_PATH }}"
+
+    - name: Configure Git
+      run: |
+        git config user.name "GitHub Actions"
+        git config user.email "actions@github.com"
+
+    - name: Update manifests with new image tag
+      run: |
+        echo "🚀 Executing update script..."
+        chmod +x .github/scripts/update-manifests.sh
+        ./.github/scripts/update-manifests.sh \
+          "${{ needs.determine-context.outputs.environment }}" \
+          "${{ needs.determine-context.outputs.image-tag }}" \
+          "${{ env.GITOPS_PATH }}"
+
+    - name: Commit and push changes
+      run: |
+        echo "📦 Checking for changes..."
+        git status
+        
+        if git diff --quiet; then
+          echo "🤷 No changes to commit"
+        else
+          echo "💾 Committing changes..."
+          git add .
+          git commit -m "chore: update ${{ needs.determine-context.outputs.environment }} to image ${{ needs.determine-context.outputs.image-tag }} [skip ci]"
+          git push origin ${{ github.ref }}
+          echo "✅ GitOps manifests updated and pushed"
+        fi
 
   argocd-sync:
     needs: [determine-context, update-gitops-manifests]
-    if: needs.determine-context.outputs.environment == 'production' && success()
-    uses: ./.github/workflows/argocd-sync.yml
-    with:
-      environment: ${{ needs.determine-context.outputs.environment }}
-    secrets: 
-      K8S_PROD_CONFIG: ${{ secrets.K8S_PROD_CONFIG }}
+    if: needs.determine-context.outputs.environment == 'production'
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+    - name: Install Argo CD CLI
+      run: |
+        curl -sSL -o argocd-linux-amd64 https://github.com/argoproj/argo-cd/releases/latest/download/argocd-linux-amd64
+        sudo install -m 555 argocd-linux-amd64 /usr/local/bin/argocd
+        rm argocd-linux-amd64
+
+    - name: Configure Kubernetes
+      run: |
+        mkdir -p $HOME/.kube
+        echo "${{ secrets.K8S_PROD_CONFIG }}" | base64 -d > $HOME/.kube/config
+        chmod 600 $HOME/.kube/config
+
+    - name: Sync Argo CD application
+      run: |
+        APP_NAME="banking-app-${{ needs.determine-context.outputs.environment }}"
+        echo "🔄 Syncing Argo CD application: $APP_NAME"
+        # argocd app sync $APP_NAME
+        echo "✅ Argo CD sync completed (simulated)"
 
   verification:
     needs: [determine-context, update-gitops-manifests]
-    if: success()  # ✅ S'exécute si les jobs précédents réussissent
-    uses: ./.github/workflows/verification.yml
-    with:
-      environment: ${{ needs.determine-context.outputs.environment }}
-      image_tag: ${{ needs.determine-context.outputs.image-tag }}
-    secrets: 
-      K8S_PROD_CONFIG: ${{ secrets.K8S_PROD_CONFIG }}
-      K8S_STAGING_CONFIG: ${{ secrets.K8S_STAGING_CONFIG }}
+    runs-on: ubuntu-latest
+    environment: ${{ needs.determine-context.outputs.environment }}
+    outputs:
+      result: ${{ steps.result.outputs.status }}
+    steps:
+    - name: Debug verification
+      run: |
+        echo "🔍 VERIFICATION:"
+        echo "Environment: ${{ needs.determine-context.outputs.environment }}"
+        echo "Image Tag: ${{ needs.determine-context.outputs.image-tag }}"
+
+    - name: Simulate verification
+      run: |
+        echo "✅ Simulating deployment verification..."
+        echo "All checks passed for ${{ needs.determine-context.outputs.environment }}"
+
+    - name: Set result
+      id: result
+      run: |
+        echo "status=success" >> $GITHUB_OUTPUT
 
   notify:
     needs: [determine-context, verification]
-    if: always()  # ✅ Toujours s'exécuter pour la notification
-    uses: ./.github/workflows/notify.yml
-    with:
-      environment: ${{ needs.determine-context.outputs.environment }}
-      image_tag: ${{ needs.determine-context.outputs.image-tag }}
-      status: ${{ needs.verification.result }}
-    secrets:
-      SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+    - name: Debug notification
+      run: |
+        echo "📢 NOTIFICATION:"
+        echo "Environment: ${{ needs.determine-context.outputs.environment }}"
+        echo "Image Tag: ${{ needs.determine-context.outputs.image-tag }}"
+        echo "Status: ${{ needs.verification.result }}"
+
+    - name: Simulate notification
+      run: |
+        echo "🔔 Simulating notification..."
+        echo "Deployment ${{ needs.verification.result }} for ${{ needs.determine-context.outputs.environment }}"

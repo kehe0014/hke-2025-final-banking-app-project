@@ -19,6 +19,6 @@ commonLabels:
 
 images:
   - name: tdksoft341/tdk-banking-app
-    newTag: "v1.0.0"
+    newTag: "test-branch-abc123"
   - name: redis
-    newTag: "7-alpine"
+    newTag: "test-branch-abc123"

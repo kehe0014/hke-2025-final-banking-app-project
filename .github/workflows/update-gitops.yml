@@ -13,7 +13,6 @@ on:
         required: true
         type: string
     secrets:
-      # Changé de GITHUB_TOKEN à GHA_TOKEN
       GHA_TOKEN:
         required: true
 
@@ -29,35 +28,50 @@ jobs:
         fetch-depth: 0
         token: ${{ secrets.GHA_TOKEN }}
 
+    - name: Debug parameters
+      run: |
+        echo "🔍 PARAMETER DEBUG:"
+        echo "inputs.gitops_path: '${{ inputs.gitops_path }}'"
+        echo "inputs.environment: '${{ inputs.environment }}'"
+        echo "inputs.image_tag: '${{ inputs.image_tag }}'"
+        echo "needs.build-and-test.outputs.image-tag: '${{ needs.build-and-test.outputs.image-tag }}'"
+        echo "needs.build-and-test.outputs.environment: '${{ needs.build-and-test.outputs.environment }}'"
+        echo ""
+        echo "📁 VERIFYING STRUCTURE:"
+        echo "Current directory: $(pwd)"
+        echo "GitOps path exists: $(test -d '${{ inputs.gitops_path }}' && echo 'YES' || echo 'NO')"
+        echo "Overlays exist: $(test -d '${{ inputs.gitops_path }}/overlays' && echo 'YES' || echo 'NO')"
+        echo "Environment overlay exists: $(test -d '${{ inputs.gitops_path }}/overlays/${{ inputs.environment }}' && echo 'YES' || echo 'NO')"
+        echo ""
+        echo "📄 LISTING FILES:"
+        find "${{ inputs.gitops_path }}/overlays/${{ inputs.environment }}" -name "*.yaml" -o -name "*.yml" | sort
+
     - name: Configure Git
       run: |
         git config user.name "GitHub Actions"
         git config user.email "actions@github.com"
 
-    - name: Verify GitOps directory exists
-      run: |
-        echo "📁 Checking GitOps directory structure..."
-        if [ -d "${{ inputs.gitops_path }}" ]; then
-          echo "✅ GitOps directory exists: ${{ inputs.gitops_path }}"
-          find "${{ inputs.gitops_path }}" -name "*.yaml" -o -name "*.yml" | sort
-        else
-          echo "❌ GitOps directory not found: ${{ inputs.gitops_path }}"
-          echo "📂 Current directory structure:"
-          find . -maxdepth 3 -type d | sort
-          exit 1
-        fi
-
     - name: Update manifests with new image tag
       run: |
+        echo "🚀 EXECUTING UPDATE SCRIPT:"
+        echo "Parameters passed to script:"
+        echo "  Environment: '${{ inputs.environment }}'"
+        echo "  Image Tag: '${{ inputs.image_tag }}'"
+        echo "  GitOps Path: '${{ inputs.gitops_path }}'"
+        
         chmod +x .github/scripts/update-manifests.sh
         ./.github/scripts/update-manifests.sh "${{ inputs.environment }}" "${{ inputs.image_tag }}" "${{ inputs.gitops_path }}"
 
     - name: Commit and push changes
       run: |
-        # Vérifier s'il y a des changements
+        echo "📦 CHECKING FOR CHANGES:"
+        git status
+        git diff
+        
         if git diff --quiet; then
           echo "🤷 No changes to commit"
         else
+          echo "💾 Committing changes..."
           git add .
           git commit -m "chore: update ${{ inputs.environment }} to image ${{ inputs.image_tag }} [skip ci]"
           git push origin ${{ github.ref }}

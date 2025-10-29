@@ -128,3 +128,4 @@ dmypy.json
 .pyre/
 
 *utils/
+.github/scripts/test-update-local.sh

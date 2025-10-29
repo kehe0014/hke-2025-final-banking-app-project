@@ -115,8 +115,16 @@ jobs:
           --namespace=${{ env.K8S_NAMESPACE }} \
           --dry-run=client -o yaml | kubectl apply -f -
         
-        # Mettre à jour l'image du déploiement avec la nouvelle image
-        # kubectl set image deployment/banking-app tdk-banking-app=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ needs.build.outputs.image-tag }} -n ${{ env.K8S_NAMESPACE }}
+        echo "🔍 Détection du nom du container..."
+        CONTAINER_NAME=$(kubectl get deployment banking-app -n ${{ env.K8S_NAMESPACE }} -o jsonpath='{.spec.template.spec.containers[0].name}' 2>/dev/null || echo "")
+        
+        if [ -z "$CONTAINER_NAME" ]; then
+          echo "⚠️  Impossible de détecter le container, utilisation de 'tdk-banking-app' par défaut"
+          CONTAINER_NAME="tdk-banking-app"
+        fi
+        
+        echo "📦 Container à mettre à jour: $CONTAINER_NAME"
+        kubectl set image deployment/banking-app $CONTAINER_NAME=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ needs.build.outputs.image-tag }} -n ${{ env.K8S_NAMESPACE }}
     
     - name: Wait for rollout
       run: |

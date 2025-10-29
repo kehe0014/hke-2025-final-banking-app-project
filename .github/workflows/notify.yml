@@ -1,86 +1,38 @@
 name: Deployment Notification
 
+# Ce workflow est appelé par un autre workflow (workflow_call).
+# Il est conçu pour être réutilisé.
 on:
   workflow_call:
     inputs:
       environment:
         required: true
         type: string
+        description: The target deployment environment (e.g., staging, production).
       image_tag:
         required: true
         type: string
+        description: The tag of the Docker image that was deployed.
       status:
         required: true
         type: string
+        description: The result status of the preceding job (success, failure, cancelled).
     secrets:
       SLACK_WEBHOOK_URL:
         required: false
+        description: Webhook URL for Slack notifications.
 
 jobs:
   notify:
     runs-on: ubuntu-latest
+    name: Final Notification
 
     steps:
-    - name: Send Slack notification
-      if: always() && secrets.SLACK_WEBHOOK_URL
-      uses: slackapi/slack-github-action@v1.24.0
-      with:
-        payload: |
-          {
-            "text": "Deployment ${{ inputs.status }} for ${{ inputs.environment }}",
-            "blocks": [
-              {
-                "type": "section",
-                "text": {
-                  "type": "mrkdwn",
-                  "text": "*Deployment ${{ inputs.status }}* 🚀"
-                }
-              },
-              {
-                "type": "section",
-                "fields": [
-                  {
-                    "type": "mrkdwn",
-                    "text": "*Environment:*\n${{ inputs.environment }}"
-                  },
-                  {
-                    "type": "mrkdwn",
-                    "text": "*Image Tag:*\n${{ inputs.image_tag }}"
-                  },
-                  {
-                    "type": "mrkdwn",
-                    "text": "*Status:*\n${{ inputs.status }}"
-                  }
-                ]
-              }
-            ]
-          }
-      env:
-        SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+      - name: Display Deployment Summary
+        run: |
+          echo "=========================================="
+          echo "🚀 RÉSUMÉ DE LA NOTIFICATION DE DÉPLOIEMENT"
+          echo "=========================================="
 
-    - name: Create GitHub comment
-      if: always()
-      uses: actions/github-script@v6
-      with:
-        script: |
-          const status = '${{ inputs.status }}';
-          const environment = '${{ inputs.environment }}';
-          const imageTag = '${{ inputs.image_tag }}';
-          
-          let message = '';
-          let icon = '';
-          
-          if (status === 'success') {
-            icon = '🎉';
-            message = `**GitOps Deployment Successful!** ${icon}\n\n• Environment: ${environment}\n• Image: ${imageTag}\n• Status: ✅ Deployed and verified\n• Argo CD: Auto-synced from Git`;
-          } else {
-            icon = '❌';
-            message = `**GitOps Deployment Failed!** ${icon}\n\n• Environment: ${environment}\n• Image: ${imageTag}\n• Status: ❌ Deployment failed\n\nPlease check the workflow logs for details.`;
-          }
-          
-          github.rest.issues.createComment({
-            issue_number: context.issue.number,
-            owner: context.repo.owner,
-            repo: context.repo.repo,
-            body: message
-          });
+      - name: Create GitHub comment
+        run: echo "Simulation d'une étape de commentaire GitHub..."

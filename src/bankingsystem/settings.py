@@ -16,7 +16,8 @@ ALLOWED_HOSTS = [
     'localhost',
     '127.0.0.1',
     '178.254.23.139',  # L'IP de  ingress
-    '.votredomaine.com'  # Pour tous les sous-domaines
+    '.votredomaine.com',
+    'opentdkbanking.com'
 ]
 
 

@@ -11,7 +11,13 @@ SECRET_KEY = ')_z--t-qq1=s!l*c-1pg(%$3l%=ys9m7!fh@jtom47ozn-24^*'
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = True
 
-ALLOWED_HOSTS = ['localhost', '127.0.0.1', '0.0.0.0']
+ALLOWED_HOSTS = [
+    'banking.votredomaine.com',
+    'localhost',
+    '127.0.0.1',
+    '178.254.23.139',  # L'IP de  ingress
+    '.votredomaine.com'  # Pour tous les sous-domaines
+]
 
 
 # Application definition
@@ -141,3 +147,4 @@ AUTHENTICATION_BACKENDS = (
     'django.contrib.auth.backends.ModelBackend',
     'accounts.backends.AccountNoBackend',
 )
+

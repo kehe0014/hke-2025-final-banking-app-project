@@ -1,0 +1,36 @@
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: banking-app-service-monitor
+  namespace: banking-app-prod
+  labels:
+    app: banking-app
+    release: monitoring
+spec:
+  selector:
+    matchLabels:
+      app: banking-app
+  endpoints:
+  - port: http
+    interval: 30s
+    path: /metrics
+    scheme: http
+  namespaceSelector:
+    matchNames:
+    - banking-app-prod
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: banking-app-metrics
+  namespace: banking-app-prod
+  labels:
+    app: banking-app
+spec:
+  ports:
+  - name: http
+    port: 8080
+    targetPort: 8080
+  selector:
+    app: banking-app

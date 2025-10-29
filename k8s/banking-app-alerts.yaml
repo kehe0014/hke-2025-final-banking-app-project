@@ -1,0 +1,30 @@
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: banking-app-alerts
+  namespace: banking-app-prod
+  labels:
+    app: banking-app
+    release: monitoring
+spec:
+  groups:
+  - name: banking-app.rules
+    rules:
+    - alert: BankingAppDown
+      expr: up{job="banking-app-metrics"} == 0
+      for: 1m
+      labels:
+        severity: critical
+        namespace: banking-app-prod
+      annotations:
+        summary: "Banking application is down"
+        description: "The banking app in namespace {{ $labels.namespace }} has been down for more than 1 minute"
+        
+    - alert: BankingAppHighMemory
+      expr: container_memory_usage_bytes{container="banking-app", namespace="banking-app-prod"} > 1000000000  # 1GB
+      for: 5m
+      labels:
+        severity: warning
+      annotations:
+        summary: "Banking app high memory usage"
+        description: "Banking app memory usage is above 1GB for 5 minutes"

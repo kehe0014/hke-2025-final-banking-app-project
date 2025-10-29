@@ -110,6 +110,8 @@ jobs:
         kubectl apply -f k8s/redis-deployment-prod.yaml -n ${{ env.K8S_NAMESPACE }}
         kubectl apply -f k8s/service-prod.yaml -n ${{ env.K8S_NAMESPACE }}
         kubectl apply -f k8s/ingress-prod.yaml -n ${{ env.K8S_NAMESPACE }}
+        kubectl apply -f banking-app-alerts.yaml
+        kubectl apply -f banking-app-monitoring.yaml
 
         kubectl create deployment banking-app \
           --image=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ needs.build.outputs.image-tag }} \

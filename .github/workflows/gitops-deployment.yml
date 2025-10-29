@@ -47,6 +47,7 @@ jobs:
 
   build-and-test:
     needs: determine-context
+    if: success()  # ✅ S'exécute si determine-context réussit
     uses: ./.github/workflows/build-and-test.yml
     with:
       registry: ${{ env.REGISTRY }}
@@ -59,6 +60,7 @@ jobs:
 
   update-gitops-manifests:
     needs: determine-context
+    if: success()  # ✅ S'exécute si determine-context réussit
     uses: ./.github/workflows/update-gitops.yml
     with:
       gitops_path: ${{ env.GITOPS_PATH }}
@@ -69,7 +71,7 @@ jobs:
 
   argocd-sync:
     needs: [determine-context, update-gitops-manifests]
-    if: needs.determine-context.outputs.environment == 'production'
+    if: needs.determine-context.outputs.environment == 'production' && success()
     uses: ./.github/workflows/argocd-sync.yml
     with:
       environment: ${{ needs.determine-context.outputs.environment }}
@@ -78,6 +80,7 @@ jobs:
 
   verification:
     needs: [determine-context, update-gitops-manifests]
+    if: success()  # ✅ S'exécute si les jobs précédents réussissent
     uses: ./.github/workflows/verification.yml
     with:
       environment: ${{ needs.determine-context.outputs.environment }}
@@ -88,7 +91,7 @@ jobs:
 
   notify:
     needs: [determine-context, verification]
-    if: always()
+    if: always()  # ✅ Toujours s'exécuter pour la notification
     uses: ./.github/workflows/notify.yml
     with:
       environment: ${{ needs.determine-context.outputs.environment }}

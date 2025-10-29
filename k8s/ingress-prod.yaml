@@ -4,9 +4,14 @@ metadata:
   name: banking-app-ingress
   namespace: banking-app-prod
   annotations:
+    kubernetes.io/ingress.class: "nginx"
     nginx.ingress.kubernetes.io/rewrite-target: /
+    cert-manager.io/cluster-issuer: "letsencrypt-prod"  # Si vous avez cert-manager
 spec:
-  ingressClassName: nginx
+  tls:
+  - hosts:
+    - banking.votredomaine.com
+    secretName: banking-app-tls
   rules:
   - host: banking.votredomaine.com
     http:

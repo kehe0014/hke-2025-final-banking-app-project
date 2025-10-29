@@ -12,15 +12,17 @@ on:
       status:
         required: true
         type: string
+    secrets:
+      SLACK_WEBHOOK_URL:
+        required: false
 
 jobs:
   notify:
     runs-on: ubuntu-latest
-    if: always()
 
     steps:
     - name: Send Slack notification
-      if: always()
+      if: always() && secrets.SLACK_WEBHOOK_URL
       uses: slackapi/slack-github-action@v1.24.0
       with:
         payload: |
@@ -48,10 +50,6 @@ jobs:
                   {
                     "type": "mrkdwn",
                     "text": "*Status:*\n${{ inputs.status }}"
-                  },
-                  {
-                    "type": "mrkdwn",
-                    "text": "*Repository:*\n${{ github.repository }}"
                   }
                 ]
               }

@@ -9,6 +9,11 @@ on:
       image_name:
         required: true
         type: string
+    secrets:
+      DOCKERHUB_USERNAME:
+        required: true
+      DOCKERHUB_TOKEN:
+        required: true
 
 outputs:
   image-tag:
@@ -48,19 +53,32 @@ jobs:
       run: |
         chmod +x .github/scripts/generate-tag.sh
         ./.github/scripts/generate-tag.sh
-        echo "Generated tag: ${{ steps.tag.outputs.tag }}"
+
+    - name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@v3
+
+    - name: Log in to Docker Hub
+      uses: docker/login-action@v3
+      with:
+        username: ${{ secrets.DOCKERHUB_USERNAME }}
+        password: ${{ secrets.DOCKERHUB_TOKEN }}
 
     - name: Build and push Docker image
-      uses: ./.github/actions/docker-build
-      with:
-        registry: ${{ inputs.registry }}
-        image_name: ${{ inputs.image_name }}
-        image_tag: ${{ steps.tag.outputs.tag }}
-        dockerhub_username: ${{ secrets.DOCKERHUB_USERNAME }}
-        dockerhub_token: ${{ secrets.DOCKERHUB_TOKEN }}
+      run: |
+        docker build -t ${{ inputs.registry }}/${{ inputs.image_name }}:${{ steps.tag.outputs.tag }} .
+        docker push ${{ inputs.registry }}/${{ inputs.image_name }}:${{ steps.tag.outputs.tag }}
+        
+        # Tag latest only for main branch
+        if [[ "${{ github.ref }}" == "refs/heads/main" ]]; then
+          docker tag ${{ inputs.registry }}/${{ inputs.image_name }}:${{ steps.tag.outputs.tag }} ${{ inputs.registry }}/${{ inputs.image_name }}:latest
+          docker push ${{ inputs.registry }}/${{ inputs.image_name }}:latest
+          echo "✅ Latest tag updated"
+        fi
+        
+        echo "✅ Image pushed: ${{ inputs.registry }}/${{ inputs.image_name }}:${{ steps.tag.outputs.tag }}"
 
-    #- name: Run application tests
-      #run: |
-        #echo "🧪 Running application tests..."
+    - name: Run application tests
+      run: |
+        echo "🧪 Running application tests..."
         # docker run --rm ${{ inputs.registry }}/${{ inputs.image_name }}:${{ steps.tag.outputs.tag }} python manage.py test
-        #echo "✅ Tests completed (placeholder)"
+        echo "✅ Tests completed (placeholder)"

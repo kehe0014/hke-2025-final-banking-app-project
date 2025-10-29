@@ -7,23 +7,31 @@ on:
     types: [ published ]
   pull_request:
     branches: [ main ]
-    
+
+env:
+  REGISTRY: docker.io
+  IMAGE_NAME: tdksoft341/tdk-banking-app
+  GITOPS_PATH: gitops
+
 jobs:
   build-and-test:
     uses: ./.github/workflows/_templates/build-and-test.yml
     with:
-      registry: "docker.io"
-      image_name: "tdksoft341/tdk-banking-app"
-    secrets: inherit
+      registry: docker.io
+      image_name: tdksoft341/tdk-banking-app
+    secrets: 
+      DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+      DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
 
   update-gitops-manifests:
     needs: build-and-test
     uses: ./.github/workflows/_templates/update-gitops.yml
     with:
-      gitops_path: "gitops"
+      gitops_path: gitops
       environment: ${{ needs.build-and-test.outputs.environment }}
       image_tag: ${{ needs.build-and-test.outputs.image-tag }}
-    secrets: inherit
+    secrets: 
+      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
   argocd-sync:
     needs: [build-and-test, update-gitops-manifests]
@@ -31,7 +39,8 @@ jobs:
     uses: ./.github/workflows/_templates/argocd-sync.yml
     with:
       environment: ${{ needs.build-and-test.outputs.environment }}
-    secrets: inherit
+    secrets: 
+      K8S_PROD_CONFIG: ${{ secrets.K8S_PROD_CONFIG }}
 
   verification:
     needs: [build-and-test, update-gitops-manifests]
@@ -39,13 +48,17 @@ jobs:
     with:
       environment: ${{ needs.build-and-test.outputs.environment }}
       image_tag: ${{ needs.build-and-test.outputs.image-tag }}
-    secrets: inherit
+    secrets: 
+      K8S_PROD_CONFIG: ${{ secrets.K8S_PROD_CONFIG }}
+      K8S_STAGING_CONFIG: ${{ secrets.K8S_STAGING_CONFIG }}
 
- # notify:
- #   needs: [verification]
-   # if: always()
-   # uses: ./.github/workflows/_templates/notify.yml
+  # notify:
+    # needs: [verification]
+    # if: always()
+    # uses: ./.github/workflows/_templates/notify.yml
    # with:
-    #  environment: ${{ needs.build-and-test.outputs.environment }}
-     # image_tag: ${{ needs.build-and-test.outputs.image-tag }}
-     # status: ${{ needs.verification.result }}
+      # environment: ${{ needs.build-and-test.outputs.environment }}
+      # image_tag: ${{ needs.build-and-test.outputs.image-tag }}
+      # status: ${{ needs.verification.result }}
+    # secrets:
+      # SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}

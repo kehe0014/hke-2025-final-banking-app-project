@@ -14,4 +14,4 @@ spec:
         - name: banking-app
           env:
             - name: ALLOWED_HOSTS
-              value: "banking.staging.votredomaine.com,localhost,127.0.0.1,.votredomaine.com, *.tdk.com"
+              value: "banking.staging.votredomaine.com,localhost,127.0.0.1,.votredomaine.com, *.tdk.com, *"

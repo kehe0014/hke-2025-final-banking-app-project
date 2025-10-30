@@ -2,23 +2,12 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: banking-app
+  namespace: banking-app-staging
 spec:
-  replicas: 2
   template:
     spec:
       containers:
-      - name: banking-app
-        resources:
-          requests:
-            memory: "256Mi"
-            cpu: "250m"
-          limits:
-            memory: "512Mi"
-            cpu: "500m"
-        env:
-        - name: ENVIRONMENT
-          value: "staging"
-        - name: DEBUG
-          value: "True"
-        - name: LOG_LEVEL
-          value: "DEBUG"
+        - name: banking-app
+          env:
+            - name: ALLOWED_HOSTS
+              value: "banking.staging.votredomaine.com,localhost,127.0.0.1,.votredomaine.com"

@@ -7,7 +7,7 @@ metadata:
     nginx.ingress.kubernetes.io/rewrite-target: /
 spec:
   rules:
-    - host: banking.staging.votredomaine.com   
+    - host: banking.staging.votredomaine.com
       http:
         paths:
           - path: /

@@ -18,6 +18,6 @@ patches:
 
 images:
   - name: tdksoft341/tdk-banking-app
-    newTag: "develop-05f1bc36"
+    newTag: "develop-b2059b9c"
   - name: redis
-    newTag: "develop-05f1bc36"
+    newTag: "develop-b2059b9c"

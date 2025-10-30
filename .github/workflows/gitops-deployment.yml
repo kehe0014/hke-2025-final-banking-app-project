@@ -340,8 +340,8 @@ jobs:
             echo "✅ Sync initiated successfully"
             echo ""
             
-            echo "⏳ Waiting for sync completion (timeout: 600s)..."
-            if argocd app wait "$APP_NAME" --health --timeout 600; then
+            echo "⏳ Waiting for sync completion (timeout: 300s)..."
+            if argocd app wait "$APP_NAME" --health --timeout 300; then
               echo "✅ Sync completed successfully - Application is healthy"
             else
               echo "⚠️  Sync completed but health check timeout"

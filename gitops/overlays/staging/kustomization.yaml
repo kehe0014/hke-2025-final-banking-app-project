@@ -19,6 +19,6 @@ commonLabels:
 
 images:
   - name: tdksoft341/tdk-banking-app
-    newTag: "develop-46fff5c3"
+    newTag: "develop-b8c773e6"
   - name: redis
-    newTag: "develop-46fff5c3"
+    newTag: "develop-b8c773e6"

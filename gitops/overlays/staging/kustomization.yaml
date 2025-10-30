@@ -6,16 +6,12 @@ namespace: banking-app-staging
 resources:
   - ../../base
 
-replicas:
-  - name: banking-app
-    count: 2
-
-patchesStrategicMerge:
-  - patch-deployment.yaml
-
-commonLabels:
+labels:
   environment: staging
   app.kubernetes.io/version: "1.0.0"
+
+patches:
+  - patch-deployment.yaml
 
 images:
   - name: tdksoft341/tdk-banking-app

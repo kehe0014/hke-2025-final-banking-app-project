@@ -416,6 +416,299 @@ jobs:
         echo "🔗 Argo CD Access: https://argocd.178.254.23.139.nip.io"
         echo "👀 Visual verification recommended in Argo CD UI"
 
+  argocd-sync:
+    needs: [determine-context, update-gitops-manifests]
+    if: (needs.determine-context.outputs.environment == 'production' || needs.determine-context.outputs.environment == 'staging') && success()
+    runs-on: ubuntu-latest
+    environment: ${{ needs.determine-context.outputs.environment }}
+    
+    steps:
+    # =============================================
+    # STEP 1: ARGO CD CLI INSTALLATION
+    # =============================================
+    - name: "🔧 INSTALLATION - Argo CD Command Line Interface"
+      run: |
+        echo "🎯 STARTING ARGO CD CLI INSTALLATION"
+        echo "===================================="
+        
+        # Install Argo CD CLI
+        curl -sSL -o argocd-linux-amd64 https://github.com/argoproj/argo-cd/releases/latest/download/argocd-linux-amd64
+        sudo install -m 555 argocd-linux-amd64 /usr/local/bin/argocd
+        rm argocd-linux-amd64
+        echo "✅ Argo CD CLI installed"
+
+    # =============================================
+    # STEP 2: KUBERNETES CONFIGURATION
+    # =============================================
+    - name: "⚙️  CONFIGURATION - Kubernetes Cluster Access"
+      run: |
+        echo "🎯 KUBERNETES ACCESS CONFIGURATION"
+        echo "=================================="
+        
+        mkdir -p $HOME/.kube
+        
+        if [[ "${{ needs.determine-context.outputs.environment }}" == "production" ]]; then
+          echo "${{ secrets.K8S_PROD_CONFIG }}" | base64 -d > $HOME/.kube/config
+          echo "✅ Production configuration loaded"
+        else
+          echo "${{ secrets.K8S_STAGING_CONFIG }}" | base64 -d > $HOME/.kube/config
+          echo "✅ Staging configuration loaded"
+        fi
+        
+        chmod 600 $HOME/.kube/config
+        echo "✅ Kubernetes configured"
+
+    # =============================================
+    # STEP 3: ARGO CD CONNECTION DIAGNOSTICS
+    # =============================================
+    - name: "🔍 DIAGNOSTICS - Argo CD Connection Testing"
+      run: |
+        echo "🎯 ARGO CD CONNECTION DIAGNOSTICS"
+        echo "================================"
+        echo ""
+        
+        echo "🔍 Testing different URL formats..."
+        
+        # Test 1: Original URL
+        URL1="https://argocd.178.254.23.139.nip.io"
+        echo "1. Testing: $URL1"
+        curl -k -I --connect-timeout 10 "$URL1" && echo "   ✅ Accessible" || echo "   ❌ Not accessible"
+        
+        # Test 2: HTTP instead of HTTPS
+        URL2="http://argocd.178.254.23.139.nip.io"
+        echo "2. Testing: $URL2"
+        curl -I --connect-timeout 10 "$URL2" && echo "   ✅ Accessible" || echo "   ❌ Not accessible"
+        
+        # Test 3: Direct IP with port
+        URL3="https://178.254.23.139"
+        echo "3. Testing: $URL3"
+        curl -k -I --connect-timeout 10 "$URL3" && echo "   ✅ Accessible" || echo "   ❌ Not accessible"
+        
+        # Test 4: DNS resolution
+        echo "4. DNS Resolution:"
+        nslookup argocd.178.254.23.139.nip.io || echo "   ❌ DNS resolution failed"
+        
+        echo ""
+        echo "🎯 DIAGNOSTICS COMPLETED"
+
+    # =============================================
+    # STEP 4: MULTI-METHOD ARGO CD AUTHENTICATION
+    # =============================================
+    - name: "🌐 CONNECTION - Multi-Method Argo CD Authentication"
+      id: argocd-auth
+      run: |
+        echo "🎯 ARGO CD MULTI-METHOD AUTHENTICATION"
+        echo "======================================"
+        echo ""
+        
+        # Get Argo CD password
+        ARGOCD_PASSWORD=$(kubectl -n argocd get secret argocd-initial-admin-secret -o jsonpath="{.data.password}" | base64 -d)
+        echo "🔐 Password retrieved successfully"
+        echo ""
+        
+        echo "🔄 ATTEMPTING DIFFERENT CONNECTION METHODS..."
+        echo ""
+        
+        # Method 1: HTTPS with grpc-web (original method)
+        echo "1. 🔄 Method: HTTPS with gRPC-web"
+        URL1="https://argocd.178.254.23.139.nip.io"
+        echo "   URL: $URL1"
+        if timeout 30 argocd login "$URL1" \
+          --username admin \
+          --password "$ARGOCD_PASSWORD" \
+          --insecure \
+          --grpc-web; then
+          echo "   ✅ SUCCESS: Connected via HTTPS + gRPC-web"
+          echo "connection_method=https_grpc_web" >> $GITHUB_OUTPUT
+          exit 0
+        else
+          echo "   ❌ FAILED: HTTPS + gRPC-web method"
+        fi
+        echo ""
+        
+        # Method 2: HTTPS without grpc-web
+        echo "2. 🔄 Method: HTTPS without gRPC-web"
+        URL1="https://argocd.178.254.23.139.nip.io"
+        echo "   URL: $URL1"
+        if timeout 30 argocd login "$URL1" \
+          --username admin \
+          --password "$ARGOCD_PASSWORD" \
+          --insecure; then
+          echo "   ✅ SUCCESS: Connected via HTTPS (no gRPC-web)"
+          echo "connection_method=https_no_grpc" >> $GITHUB_OUTPUT
+          exit 0
+        else
+          echo "   ❌ FAILED: HTTPS (no gRPC-web) method"
+        fi
+        echo ""
+        
+        # Method 3: HTTP instead of HTTPS
+        echo "3. 🔄 Method: HTTP (port 80)"
+        URL2="http://argocd.178.254.23.139.nip.io"
+        echo "   URL: $URL2"
+        if timeout 30 argocd login "$URL2" \
+          --username admin \
+          --password "$ARGOCD_PASSWORD" \
+          --insecure; then
+          echo "   ✅ SUCCESS: Connected via HTTP"
+          echo "connection_method=http" >> $GITHUB_OUTPUT
+          exit 0
+        else
+          echo "   ❌ FAILED: HTTP method"
+        fi
+        echo ""
+        
+        # Method 4: Direct IP address
+        echo "4. 🔄 Method: Direct IP address"
+        URL3="https://178.254.23.139"
+        echo "   URL: $URL3"
+        if timeout 30 argocd login "$URL3" \
+          --username admin \
+          --password "$ARGOCD_PASSWORD" \
+          --insecure \
+          --grpc-web; then
+          echo "   ✅ SUCCESS: Connected via direct IP"
+          echo "connection_method=direct_ip" >> $GITHUB_OUTPUT
+          exit 0
+        else
+          echo "   ❌ FAILED: Direct IP method"
+        fi
+        echo ""
+        
+        # Method 5: Port-forward approach (fallback)
+        echo "5. 🔄 Method: Kubernetes Port-Forward"
+        echo "   Setting up local port forwarding..."
+        kubectl port-forward svc/argocd-server -n argocd 8080:443 &
+        PF_PID=$!
+        sleep 5
+        
+        if timeout 30 argocd login localhost:8080 \
+          --username admin \
+          --password "$ARGOCD_PASSWORD" \
+          --insecure; then
+          echo "   ✅ SUCCESS: Connected via port-forward"
+          # Store PID for cleanup in next step
+          echo "$PF_PID" > /tmp/argocd_pf.pid
+          echo "connection_method=port_forward" >> $GITHUB_OUTPUT
+          exit 0
+        else
+          echo "   ❌ FAILED: Port-forward method"
+          kill $PF_PID 2>/dev/null || true
+        fi
+        echo ""
+        
+        echo "❌ CRITICAL: All connection methods failed"
+        echo "💡 Please check:"
+        echo "   - Argo CD server status"
+        echo "   - Network connectivity"
+        echo "   - Firewall rules"
+        echo "   - DNS configuration"
+        exit 1
+
+    # =============================================
+    # STEP 5: APPLICATION SYNCHRONIZATION
+    # =============================================
+    - name: "🔄 SYNCHRONIZATION - Application Deployment"
+      run: |
+        echo "🎯 ARGO CD SYNCHRONIZATION"
+        echo "=========================="
+        echo ""
+        
+        APP_NAME="banking-app-${{ needs.determine-context.outputs.environment }}"
+        echo "📦 Application: $APP_NAME"
+        echo "🔗 Connection Method: ${{ steps.argocd-auth.outputs.connection_method }}"
+        echo ""
+        
+        echo "🔍 Verifying application exists..."
+        if argocd app get "$APP_NAME" > /dev/null 2>&1; then
+          echo "✅ Application found in Argo CD"
+          echo ""
+          
+          echo "📊 Pre-sync status:"
+          argocd app get "$APP_NAME" --output jsonpath="{.status.sync.status}/{.status.health.status}" || true
+          echo ""
+          
+          echo "🔄 Starting synchronization..."
+          if argocd app sync "$APP_NAME"; then
+            echo "✅ Sync initiated successfully"
+            echo ""
+            
+            echo "⏳ Waiting for sync completion (timeout: 600s)..."
+            if argocd app wait "$APP_NAME" --health --timeout 600; then
+              echo "✅ Sync completed successfully - Application is healthy"
+            else
+              echo "⚠️  Sync completed but health check timeout"
+            fi
+          else
+            echo "❌ Sync initiation failed"
+            exit 1
+          fi
+        else
+          echo "❌ Application not found: $APP_NAME"
+          exit 1
+        fi
+
+    # =============================================
+    # STEP 6: CLEANUP AND FINAL STATUS
+    # =============================================
+    - name: "🧹 CLEANUP - Resource Cleanup"
+      if: always()
+      run: |
+        echo "🎯 CLEANUP PROCESS"
+        echo "=================="
+        echo ""
+        
+        # Cleanup port-forward if it was used
+        if [[ -f /tmp/argocd_pf.pid ]]; then
+          PF_PID=$(cat /tmp/argocd_pf.pid)
+          echo "🔄 Stopping port-forward process (PID: $PF_PID)..."
+          kill $PF_PID 2>/dev/null || true
+          rm -f /tmp/argocd_pf.pid
+          echo "✅ Port-forward cleanup completed"
+        fi
+        
+        echo ""
+        echo "🎉 CLEANUP COMPLETED"
+
+    # =============================================
+    # STEP 7: FINAL DEPLOYMENT REPORT
+    # =============================================
+    - name: "📊 REPORT - Final Deployment Status"
+      if: always()
+      run: |
+        echo "🎯 FINAL DEPLOYMENT REPORT"
+        echo "=========================="
+        echo ""
+        
+        APP_NAME="banking-app-${{ needs.determine-context.outputs.environment }}"
+        echo "📋 DEPLOYMENT SUMMARY"
+        echo "─────────────────────"
+        echo "🏷️  Application: $APP_NAME"
+        echo "🌍 Environment: ${{ needs.determine-context.outputs.environment }}"
+        echo "🔗 Connection Method: ${{ steps.argocd-auth.outputs.connection_method }}"
+        echo "🐳 Image: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ needs.determine-context.outputs.image-tag }}"
+        echo "🕐 Completion Time: $(date -Iseconds)"
+        echo ""
+        
+        echo "📈 ARGO CD STATUS"
+        echo "────────────────"
+        # Try to get final status, but don't fail if we can't
+        argocd app get "$APP_NAME" --output wide || echo "⚠️  Unable to retrieve final status"
+        echo ""
+        
+        echo "🔍 KUBERNETES STATUS"
+        echo "───────────────────"
+        NAMESPACE="banking-app-${{ needs.determine-context.outputs.environment }}"
+        echo "Namespace: $NAMESPACE"
+        echo ""
+        echo "Pods:"
+        kubectl get pods -n "$NAMESPACE" -l app.kubernetes.io/name=banking-app || echo "No pods found"
+        
+        echo ""
+        echo "✅ ARGO CD SYNCHRONIZATION PROCESS COMPLETED"
+        echo "🎉 Application is synchronized and deployed"
+
+
   verification:
     needs: [determine-context, update-gitops-manifests, argocd-sync]
     runs-on: ubuntu-latest

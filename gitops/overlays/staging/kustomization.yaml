@@ -6,12 +6,15 @@ namespace: banking-app-staging
 resources:
   - ../../base
 
+# ✅ Utilisation du champ "labels" au format attendu par kustomize >= v5
 labels:
-  environment: staging
-  app.kubernetes.io/version: "1.0.0"
+  - pairs:
+      environment: staging
+      app.kubernetes.io/version: "1.0.0"
 
 patches:
-  - patch-deployment.yaml
+  - path: patch-deployment.yaml
+  - path: patch-ingress.yaml
 
 images:
   - name: tdksoft341/tdk-banking-app

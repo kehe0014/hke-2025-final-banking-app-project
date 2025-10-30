@@ -1,0 +1,31 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: banking-app-ingress # Doit correspondre au nom de la base
+  annotations:
+    # Optionnel: Mettez à jour l'issuer si vous utilisez cert-manager
+    # cert-manager.io/cluster-issuer: "letsencrypt-staging"
+spec:
+  ingressClassName: nginx # Ajouté pour corriger l'avertissement obsolète
+  tls:
+    - hosts:
+      - banking.staging.votredomaine.com # Modification de l'hôte TLS
+      secretName: banking-app-tls # Utilisez le même secret, mais l'hôte sera mis à jour
+  rules:
+    - host: banking.staging.votredomaine.com # Modification de l'hôte des règles
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: banking-app-service
+                port:
+                  number: 8000
+          - path: /metrics
+            pathType: Prefix
+            backend:
+              service:
+                name: banking-app-metrics
+                port:
+                  number: 8080
